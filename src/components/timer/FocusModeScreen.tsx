@@ -106,21 +106,19 @@ export function FocusModeScreen({ theme, appearance, timeDisplay, progress, colo
           </div>
         ) : (
           /* Números: grupos de cifras apilados en vertical, grandes y centrados */
-          <div className="flex flex-col items-center gap-2">
+          <div className="flex flex-col items-center gap-1.5">
             {groups.map((g, i) => (
               <Fragment key={i}>
-                {i > 0 && <span className="w-1.5 h-1.5 rounded-full" style={{ background: muted, opacity: 0.5 }} />}
+                {i > 0 && <span className="w-1 h-1 rounded-full" style={{ background: muted, opacity: 0.45 }} />}
                 <span
-                  className="relative overflow-hidden rounded-[18px] px-5 py-1.5 text-center font-light tabular-nums leading-none tracking-[-0.04em]"
+                  className="relative rounded-[22px] px-3 py-1 text-center font-light tabular-nums leading-none tracking-[-0.04em]"
                   style={{
                     background: panelBg,
                     color: ink,
-                    fontSize: groups.length > 2 ? 'clamp(40px, 14vw, 58px)' : 'clamp(56px, 19vw, 82px)',
-                    minWidth: 'min(220px, 56vw)',
+                    fontSize: groups.length > 2 ? 'clamp(64px, 22vw, 112px)' : 'clamp(92px, 36vw, 156px)',
                     boxShadow: dark ? '0 10px 30px rgba(0,0,0,0.55)' : '0 10px 26px rgba(28,28,35,0.08)',
                   }}
                 >
-                  <span className="absolute left-0 right-0 top-1/2 h-px" style={{ background: dark ? 'rgba(255,255,255,0.07)' : 'rgba(28,28,35,0.06)' }} />
                   {g}
                 </span>
               </Fragment>

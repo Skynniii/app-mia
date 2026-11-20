@@ -8,6 +8,7 @@ import type { ActiveTimerCardProps } from './ActiveTimerCard';
 import { ActivityPicker } from './ActivityPicker';
 import { FocusRing } from './FocusRing';
 import { FocusModeScreen } from './FocusModeScreen';
+import { SessionModeIcon } from './SessionModeIcon';
 import { TaskPicker } from './TaskPicker';
 import { WheelPicker } from './CustomDurationModal';
 import { TimerSettingsScreen } from './TimerSettingsScreen';
@@ -23,7 +24,7 @@ import { hapticMedium, hapticHeavy } from '../../utils/haptic';
 import { primeAlarmAudio } from '../../utils/alarm';
 
 import { BackButton, DETAIL_HEADER_TOP } from '../ui/DetailScreen';
-import type { Task, TaskList } from '../../types';
+import type { Task, TaskList, TimerMode as AppTimerMode } from '../../types';
 
 interface Props extends ActiveTimerCardProps {
   onBack: () => void;
@@ -42,6 +43,14 @@ const MODE_LABELS: Record<TimerMode, string> = {
   temporizador: 'Temporizador',
   pomodoro: 'Pomodoro',
   intervalos: 'Intervalos',
+};
+
+/** Modo con el que se guarda la sesión, para el ícono de cada modo. */
+const MODE_SESSION: Record<TimerMode, AppTimerMode> = {
+  rastreador: 'stopwatch',
+  temporizador: 'timer',
+  pomodoro: 'pomodoro',
+  intervalos: 'interval',
 };
 
 export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard, onSaveSession, onSaveManualSession, onSyncTaskNotes, ...props }: Props) {
@@ -318,7 +327,10 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
                 <motion.div initial={{ opacity: 0, y: -8, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.95 }} transition={{ duration: 0.15 }} className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.15)] border border-[#f0f0f0] py-1 w-[180px] z-[101]">
                   {(['rastreador', 'temporizador', 'pomodoro', 'intervalos'] as TimerMode[]).map((m) => (
                     <button key={m} onClick={() => { onModeChange(m); setModeDropdownOpen(false); }} className={`w-full flex items-center justify-between px-4 py-2.5 text-[15px] border-none cursor-pointer transition-colors ${m === mode ? 'text-[#7f70ff] font-bold bg-[#f0edff]' : 'text-[#555] hover:bg-[#f8f9fa]'}`}>
-                      {MODE_LABELS[m]}
+                      <span className="flex items-center gap-2.5">
+                        <SessionModeIcon mode={MODE_SESSION[m]} size={16} />
+                        {MODE_LABELS[m]}
+                      </span>
                       {m === mode && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7f70ff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
                     </button>
                   ))}

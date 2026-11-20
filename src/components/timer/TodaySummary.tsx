@@ -5,6 +5,7 @@ import type { Activity, TimeSession } from '../../types';
 import { useDeviceCapability } from '../../context/DeviceCapabilityContext';
 import { useSettings } from '../../context/SettingsContext';
 import { formatClockDate } from '../../utils/timeFormat';
+import { SessionModeIcon } from './SessionModeIcon';
 
 interface Props {
   entries: TimeSession[];
@@ -143,6 +144,7 @@ export function TodaySummary({ entries, activities, liveElapsed, isRunning, live
                         className={`flex items-center gap-3 py-1.5 pl-[18px] text-left bg-transparent border-none w-full ${s.entry ? 'cursor-pointer' : 'cursor-default'}`}
                       >
                         <span className="w-1 h-6 rounded-full shrink-0" style={{ background: g.color }} />
+                        <SessionModeIcon mode={s.entry?.mode} size={13} className="text-[#b3b0bd]" />
                         <div className="flex-1 min-w-0">
                           <p className="text-[12px] text-[#999] truncate flex items-center gap-1.5 m-0">
                             {s.isLive && <span className="w-1.5 h-1.5 rounded-full bg-[#34c77b] animate-pulse shrink-0" />}
