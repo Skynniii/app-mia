@@ -98,7 +98,7 @@ export function NavTopHeader({ lists, activeListId, onSelectList, onAddList, onM
           {lists.map((list) => (
             <button
               key={list.id}
-              className={`tab-lista relative px-4 py-2 rounded-[20px] text-[13px] tracking-[-0.005em] whitespace-nowrap cursor-pointer select-none z-10 ${
+              className={`tab-lista relative px-4 py-2 rounded-[20px] text-[14px] tracking-[-0.005em] whitespace-nowrap cursor-pointer select-none z-10 ${
                 activeListId === list.id ? 'text-[#7f70ff] font-semibold' : 'text-[#8a8a95] font-medium'
               }`}
               onClick={() => {

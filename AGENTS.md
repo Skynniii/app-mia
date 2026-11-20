@@ -46,8 +46,8 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
   `letter-spacing: -0.011em`: no añadas tracking positivo al texto normal.
 - Escala de referencia (mantén estos valores para que las secciones se vean igual):
   - Título de sección: `text-[25px] font-bold tracking-[-0.03em]` en `TopBar`
-    (alineado a la izquierda, junto al botón de menú). No lo cambies por sección.
-  - Títulos de pantalla completa y de lista: 22px y 19px, `font-bold`,
+    (centrado entre el botón de menú y el avatar). No lo cambies por sección.
+  - Títulos de pantalla completa y de lista: 22px y 21px, `font-bold`,
     `tracking-[-0.03em]` / `tracking-[-0.025em]`.
   - Etiquetas de sección ("Hoy", "Historial", "Actividades"…): clase `.eyebrow`
     de `src/index.css` (11px, 600, mayúsculas, `0.09em`). No repitas clases

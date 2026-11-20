@@ -38,7 +38,7 @@ export function TopBar({ title, onMenuClick, onOpenAccount }: Props) {
         </svg>
       </button>
 
-      <h1 className="flex-1 min-w-0 truncate text-[#1c1c23] font-bold text-[25px] leading-[1.1] tracking-[-0.03em] m-0 ml-0.5">{title}</h1>
+      <h1 className="flex-1 min-w-0 truncate text-center text-[#1c1c23] font-bold text-[25px] leading-[1.1] tracking-[-0.03em] m-0">{title}</h1>
 
       <button onClick={() => setProfileOpen(!profileOpen)} className="w-9 h-9 rounded-full flex items-center justify-center shadow-sm active:scale-90 transition-transform overflow-hidden relative bg-gradient-to-br from-[#7f70ff] to-[#9d8aff]">
         {showPhoto ? (

@@ -521,7 +521,7 @@ export function PrincipalView({ lists, tasks, principalList, onUpdateList, onTog
           <div className="relative z-20 bg-white rounded-t-[10px] pt-4 px-3.5">
             <div className="flex justify-between items-center mb-4 flex-none">
               <SortMenu value={sortMode} onChange={(m) => onUpdateList('principal', { sortMode: m })} options={PRINCIPAL_SORTS} />
-              <h3 className="flex-1 text-center leading-none m-0 p-0 text-[19px] text-[#1c1c23] font-bold tracking-[-0.025em]">Principal</h3>
+              <h3 className="flex-1 text-center leading-none m-0 p-0 text-[21px] text-[#1c1c23] font-bold tracking-[-0.025em]">Principal</h3>
               <div className="w-[36px] flex-none" />
             </div>
             <hr className="border-t border-[#f0f0f5] m-0 mx-1 flex-none" />
