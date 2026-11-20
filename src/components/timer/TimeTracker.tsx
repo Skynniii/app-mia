@@ -9,6 +9,7 @@ import { useCountdownTimer, type TimerMode } from '../../hooks/useCountdownTimer
 import { useTimerSettings, type CustomInterval } from '../../hooks/useTimerSettings';
 import { useUserStorage } from '../../hooks/useUserStorage';
 import { setPendingTimerTask, getPendingTimerTask, clearPendingTimerTask } from '../../shared/pendingTimerTask';
+import { completeTaskAdvances } from '../../shared/advances';
 import { subscribeFocusRequest } from '../../shared/focusRequest';
 import { sortListsForDisplay } from '../../utils/listOrder';
 import { SectionHeader } from '../ui/SectionHeader';
@@ -100,8 +101,12 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
       }
       if (task && tracker.draft.activityId) tasksColl.update(taskId, { activityId: tracker.draft.activityId });
       // Si la sesión es de un avance, completar solo marca el avance: la tarea
-      // original únicamente suma el tiempo registrado.
-      if (task && complete && !avanceTaskId) tasksColl.update(taskId, { completed: true, completedAt: new Date().toISOString() });
+      // original únicamente suma el tiempo registrado. Al completar la tarea
+      // original se completan también todos sus avances existentes.
+      if (task && complete && !avanceTaskId) {
+        tasksColl.update(taskId, { completed: true, completedAt: new Date().toISOString() });
+        if (uid) void completeTaskAdvances(uid, taskId);
+      }
     }
     if (complete && avanceTaskId) {
       tasksColl.update(avanceTaskId, { completed: true, completedAt: new Date().toISOString() });

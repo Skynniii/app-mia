@@ -12,6 +12,7 @@ import { useUserStorage } from '../../hooks/useUserStorage';
 import { formatElapsed, type RunningTimer, type TrackerDraft } from '../../hooks/useTimeTracker';
 import { formatHHMM } from '../../utils/timeFormat';
 import { saveRunningSession, removeTrackedActivityTask, runningDuration } from '../../shared/runningSession';
+import { completeTaskAdvances } from '../../shared/advances';
 import { requestFocusView } from '../../shared/focusRequest';
 
 /** Estado del cronómetro en curso (compartido por todos los ítems). */
@@ -92,10 +93,13 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
   const tracker = useRunningTracker();
   const isAdvance = !!task.linkedTaskId;
   // Un avance se registra sobre su tarea original: el draft guarda el id del
-  // original en `taskId` y el del avance en `avanceTaskId`.
+  // original en `taskId` y el del avance en `avanceTaskId`. Si el cronómetro se
+  // inició directamente sobre la tarea original (sin pasar por el avance), sus
+  // avances también cuentan como registrándose.
   const isTimerActive = !!tracker.running
     && tracker.running.startedAt !== null
-    && (tracker.draft.taskId === task.id || (isAdvance && tracker.draft.avanceTaskId === task.id));
+    && (tracker.draft.taskId === task.id
+      || (isAdvance && (tracker.draft.avanceTaskId === task.id || tracker.draft.taskId === task.linkedTaskId)));
   // Tiempo que lleva registrándose la tarea en el Timer (se refresca por segundo).
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -228,10 +232,9 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
     }, 450);
   };
 
-  // Avance en curso: el check guarda el registro y completa SOLO el avance.
-  // El tiempo se suma a la tarea original (saveRunningSession incrementa el
-  // taskId del draft, que es el de la tarea original).
-  const handleCompleteAdvanceTimer = (e: React.MouseEvent) => {
+  // Tarea normal en curso: el check guarda y finaliza el registro de tiempo,
+  // completa la tarea y todos los avances existentes de ella.
+  const handleCompleteTaskTimer = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isChecked) return;
     const { running, draft } = tracker;
@@ -240,6 +243,32 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
     setSparkle(true);
     if (settings.sounds) playCompleteSound();
     if (running && user?.uid) {
+      tracker.setRunning(null);
+      tracker.setDraft((d) => ({ ...d, taskId: undefined, avanceTaskId: undefined }));
+      void saveRunningSession(user.uid, running, draft);
+      void completeTaskAdvances(user.uid, task.id);
+    }
+    setTimeout(() => {
+      setSparkle(false);
+      onToggle(task.id);
+    }, 450);
+  };
+
+  // Avance en curso: el check guarda el registro y completa SOLO el avance.
+  // El tiempo se suma a la tarea original (saveRunningSession incrementa el
+  // taskId del draft, que es el de la tarea original).
+  const handleCompleteAdvanceTimer = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isChecked) return;
+    const { running, draft } = tracker;
+    // Si el cronómetro se inició sobre la tarea original (no desde este avance),
+    // la sesión sigue siendo suya: aquí solo se completa el avance.
+    const launchedHere = draft.avanceTaskId === task.id;
+    hapticHeavy();
+    setOptimistic(true);
+    setSparkle(true);
+    if (settings.sounds) playCompleteSound();
+    if (launchedHere && running && user?.uid) {
       tracker.setRunning(null);
       tracker.setDraft((d) => ({ ...d, taskId: undefined, avanceTaskId: undefined }));
       void saveRunningSession(user.uid, running, draft);
@@ -293,17 +322,18 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
       ) : (
       <motion.div
         className="relative flex items-center justify-center w-[20px] h-[20px] flex-none mr-3"
-        onClick={handleComplete}
+        onClick={isTimerActive ? handleCompleteTaskTimer : handleComplete}
         animate={{ opacity: completingImportant ? 0 : 1, scale: completingImportant ? 0.6 : 1 }}
         transition={{ duration: 0.45, ease: 'easeInOut' }}
       >
         {sparkle && <Sparkles />}
         {isTimerActive ? (
           // Mientras se registra en el Timer, el check hace la animación de
-          // "cargando" (el mismo anillo de las tareas-actividad).
+          // "cargando" (el mismo anillo de las tareas-actividad) con el color
+          // de la actividad de la tarea, si tiene una.
           <>
-            <span className="absolute inset-0 rounded-full transition-colors duration-200" style={{ backgroundColor: isChecked ? '#7f70ff' : 'transparent' }} />
-            {!isChecked && <ActivityCheckRing color="#7f70ff" />}
+            <span className="absolute inset-0 rounded-full transition-colors duration-200" style={{ backgroundColor: isChecked ? playColor : 'transparent' }} />
+            {!isChecked && <ActivityCheckRing color={playColor} />}
           </>
         ) : (
           <input type="checkbox" readOnly checked={isChecked} className="peer appearance-none min-w-[22px] h-[22px] border-[1.5px] border-[#d1d1d6] rounded-full cursor-pointer checked:bg-[#7f70ff] checked:border-[#7f70ff] transition-all group-hover:border-[#b0a5ff]" />
