@@ -132,34 +132,52 @@ function AgendaViewBase({ itemsByDate, onSelectItem, onOpenDay, todayPulse = 0, 
   // a anclar cada vez que cambia la altura del contenido, mientras el usuario no
   // haya tocado la pantalla, y no se muestra hasta estar realmente en su sitio.
   useLayoutEffect(() => {
-    const scroller = scrollRef.current;
-    if (!scroller) return;
+    let disposed = false;
+    let raf = 0;
+    let observer: ResizeObserver | null = null;
+    let bound: HTMLDivElement | null = null;
     userMoved.current = false;
 
+    const markUser = () => { userMoved.current = true; };
+
     const settle = () => {
-      if (!userMoved.current) scrollToToday(false);
+      const scroller = scrollRef.current;
       const target = todayRef.current;
-      if (!target) return;
+      if (!scroller || !target) return;
+      if (!userMoved.current) scrollToToday(false);
       const offset = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
       if (Math.abs(offset - 8) <= 3) setAnchored(true);
     };
 
-    settle();
-    const observer = new ResizeObserver(settle);
-    observer.observe(scroller);
-    if (scroller.firstElementChild) observer.observe(scroller.firstElementChild);
+    // El contenedor con scroll y el día de hoy pueden no estar enganchados en el
+    // primer layout effect (el orden del commit cambia según el dispositivo): se
+    // reintenta en el siguiente frame en vez de abandonar y dejar la agenda oculta.
+    const connect = () => {
+      if (disposed) return;
+      const scroller = scrollRef.current;
+      if (!scroller || !todayRef.current) { raf = requestAnimationFrame(connect); return; }
+      settle();
+      observer = new ResizeObserver(settle);
+      observer.observe(scroller);
+      if (scroller.firstElementChild) observer.observe(scroller.firstElementChild);
+      scroller.addEventListener('touchstart', markUser, { passive: true });
+      scroller.addEventListener('wheel', markUser, { passive: true });
+      bound = scroller;
+    };
 
-    const markUser = () => { userMoved.current = true; };
-    scroller.addEventListener('touchstart', markUser, { passive: true });
-    scroller.addEventListener('wheel', markUser, { passive: true });
-    // Red de seguridad: si no se pudo medir, se muestra igualmente.
+    connect();
+    // Red de seguridad: si no se pudo medir, la agenda se muestra igualmente.
     const fallback = window.setTimeout(() => setAnchored(true), 900);
 
     return () => {
-      observer.disconnect();
+      disposed = true;
+      cancelAnimationFrame(raf);
+      observer?.disconnect();
       window.clearTimeout(fallback);
-      scroller.removeEventListener('touchstart', markUser);
-      scroller.removeEventListener('wheel', markUser);
+      if (bound) {
+        bound.removeEventListener('touchstart', markUser);
+        bound.removeEventListener('wheel', markUser);
+      }
     };
   }, [scrollToToday, scrollRef]);
 

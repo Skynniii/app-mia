@@ -35,9 +35,13 @@ export interface ActiveTimerCardProps {
   onCreateActivity: (name: string, color: string) => string;
   // Countdown / Pomodoro
   countdown: CountdownApi;
-  pomodoroPhase: 'work' | 'break';
+  pomodoroPhase: 'work' | 'break' | 'longBreak';
   pomodoroCycle: number;
   onPomodoroSkip: () => void;
+  // Intervalos
+  intervalRun?: { name: string; round: number; rounds: number; phase: 'focus' | 'rest' } | null;
+  onStartInterval: (interval: import('../../hooks/useTimerSettings').CustomInterval) => void;
+  onIntervalSkip: () => void;
 }
 
 /* ---------- sub-componentes ---------- */

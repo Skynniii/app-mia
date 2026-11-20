@@ -116,6 +116,37 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
   `android/capacitor.settings.gradle` y `android/app/capacitor.build.gradle`
   (es lo que genera `npx cap sync android`).
 
+## Sección Timer (pantalla Focus)
+
+- Modos en `src/hooks/useCountdownTimer.ts` (`TimerMode`): `rastreador`,
+  `temporizador`, `pomodoro` e `intervalos`. El modo elegido se guarda en
+  `timer-mode` (`useUserStorage`).
+- La configuración propia de la sección vive en `timer-settings`
+  (`src/hooks/useTimerSettings.ts`: duraciones del pomodoro, cada cuántas sesiones
+  toca el descanso largo, últimas duraciones del temporizador e intervalos).
+  La leen tanto `FocusScreen` como `TimerSettingsScreen`, así que se sincroniza
+  entre dispositivos como el resto del documento `users/{uid}`.
+- `TimerSettingsScreen` es la pantalla de configuración exclusiva de la sección:
+  se abre con el engranaje de `FocusScreen` y con el botón "Configurar pomodoro".
+  Ahí están las tres duraciones (abren `CustomDurationModal`, que acepta `title` e
+  `initialMinutes`), el stepper del descanso largo, la lista de intervalos
+  (`IntervalFormModal`) y los avisos de sonido/notificaciones (antes en el
+  desplegable del engranaje).
+- Temporizador: antes de empezar se muestra el selector de horas y minutos
+  (`WheelPicker` con `variant="flat"`, sin recuadro) con botones − / + de un
+  minuto y las duraciones recientes (máximo 5 distintas; si no hay, 5/10/30/45/60).
+  El anillo aparece al iniciar. Las duraciones usadas se guardan al guardar la
+  sesión.
+- El registro manual (botón del calendario con +) solo existe en Rastreador.
+- Pomodoro: debajo del anillo va la tarjeta con la configuración actual y el botón
+  "Configurar pomodoro". Al terminar un enfoque toca descanso, y descanso largo
+  cada N sesiones (`pomodoroLongBreakEvery`).
+- Con pomodoro o intervalos en marcha la barra inferior tiene cuatro botones:
+  X, play/pausa, saltar fase y check (pulsación larga = completar tarea).
+- Intervalos: cada intervalo propio tiene nombre, minutos de enfoque, minutos de
+  descanso y número de rondas; la fase alterna enfoque → descanso → siguiente
+  ronda y al acabar la última el contador se queda en 00:00 para guardar.
+
 ## Sección Calendario
 
 - `src/hooks/useCalendarData.ts` es la única fuente de datos del calendario: cruza
@@ -131,6 +162,11 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
   `users/{uid}` con la clave `calendar-layers` (`useUserStorage`).
 - Los eventos ya **no** se siembran para usuarios nuevos (`useCalendarEvents`):
   el calendario arranca vacío y solo muestra lo que el usuario crea.
+- La agenda se queda oculta (`visibility: hidden`) hasta que el día de hoy está
+  anclado arriba. Ese anclaje reintenta en el siguiente frame si el contenedor con
+  scroll todavía no está enganchado (el orden del commit cambia entre
+  dispositivos), y hay un temporizador de seguridad que la muestra igualmente: sin
+  eso, en algunos móviles la sección abría en blanco hasta pulsar "Hoy".
 - `NuevaTareaModal` acepta `initialDate` para crear una tarea fechada desde el
   calendario; se guarda con `addTaskWithData` de `useTasks`, así que aparece igual
   en la sección de Tasks. El botón + de la barra de navegación abre

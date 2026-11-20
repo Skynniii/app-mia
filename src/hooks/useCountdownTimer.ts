@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-export type TimerMode = 'rastreador' | 'temporizador' | 'pomodoro';
+export type TimerMode = 'rastreador' | 'temporizador' | 'pomodoro' | 'intervalos';
 
 /** Hook para cuenta atrás (temporizador y pomodoro). */
 export function useCountdownTimer() {

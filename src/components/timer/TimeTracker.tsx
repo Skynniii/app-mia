@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
@@ -6,6 +6,7 @@ import { playCompleteSound } from '../../utils/sound';
 import { useTimeTracker, todayKey, formatElapsed, isoToDateKey } from '../../hooks/useTimeTracker';
 import { useFirestoreCollection, incrementTaskTime } from '../../hooks/useFirestoreCollection';
 import { useCountdownTimer, type TimerMode } from '../../hooks/useCountdownTimer';
+import { useTimerSettings, type CustomInterval } from '../../hooks/useTimerSettings';
 import { useUserStorage } from '../../hooks/useUserStorage';
 import { setPendingTimerTask, getPendingTimerTask, clearPendingTimerTask } from '../../shared/pendingTimerTask';
 import { subscribeFocusRequest } from '../../shared/focusRequest';
@@ -22,18 +23,17 @@ interface Props {
   onOpenAccount: () => void;
 }
 
-const WORK_SEC = 25 * 60;
-const BREAK_SEC = 5 * 60;
-
 export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
   const { settings } = useSettings();
   const { user } = useAuth();
   const uid = user?.uid ?? null;
   const tracker = useTimeTracker();
   const countdown = useCountdownTimer();
+  const { timerSettings, updateTimerSettings } = useTimerSettings();
   const [mode, setMode] = useUserStorage<TimerMode>('timer-mode', 'rastreador');
-  const [pomodoroPhase, setPomodoroPhase] = useState<'work' | 'break'>('work');
+  const [pomodoroPhase, setPomodoroPhase] = useState<'work' | 'break' | 'longBreak'>('work');
   const [pomodoroCycle, setPomodoroCycle] = useState(0);
+  const [intervalRun, setIntervalRun] = useState<{ interval: CustomInterval; round: number; phase: 'focus' | 'rest' } | null>(null);
   const [showFocus, setShowFocus] = useState(false);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
 
@@ -102,30 +102,65 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
   };
 
   const { setOnComplete, start: cdStart } = countdown;
+
+  // Siguiente fase del pomodoro, con las duraciones configuradas: al cerrar una
+  // sesión de enfoque toca descanso (o descanso largo cada N sesiones).
+  const advancePomodoro = () => {
+    if (pomodoroPhase === 'work') {
+      const done = pomodoroCycle + 1;
+      setPomodoroCycle(done);
+      const isLong = done % Math.max(1, timerSettings.pomodoroLongBreakEvery) === 0;
+      setPomodoroPhase(isLong ? 'longBreak' : 'break');
+      cdStart((isLong ? timerSettings.pomodoroLongBreak : timerSettings.pomodoroBreak) * 60);
+    } else {
+      setPomodoroPhase('work');
+      cdStart(timerSettings.pomodoroFocus * 60);
+    }
+  };
+
+  // Siguiente fase del intervalo en curso: enfoque → descanso → siguiente ronda.
+  const advanceInterval = () => {
+    if (!intervalRun) return;
+    if (intervalRun.phase === 'focus') {
+      // Última ronda: el contador se queda en 00:00 para poder guardar la sesión.
+      if (intervalRun.round >= intervalRun.interval.rounds) return;
+      setIntervalRun({ ...intervalRun, phase: 'rest' });
+      cdStart(intervalRun.interval.restMin * 60);
+    } else {
+      setIntervalRun({ ...intervalRun, round: intervalRun.round + 1, phase: 'focus' });
+      cdStart(intervalRun.interval.focusMin * 60);
+    }
+  };
+
+  // El temporizador guarda un callback fijo: se lee el estado más reciente por ref.
+  const phaseHandlers = useRef({ advancePomodoro, advanceInterval });
+  phaseHandlers.current = { advancePomodoro, advanceInterval };
+
   useEffect(() => {
     setOnComplete(() => {
       if (settings.sounds) playCompleteSound();
-      if (mode === 'pomodoro') {
-        if (pomodoroPhase === 'work') { setPomodoroPhase('break'); setPomodoroCycle((c) => c + 1); cdStart(BREAK_SEC); }
-        else { setPomodoroPhase('work'); cdStart(WORK_SEC); }
-      }
+      if (mode === 'pomodoro') phaseHandlers.current.advancePomodoro();
+      else if (mode === 'intervalos') phaseHandlers.current.advanceInterval();
     });
-  }, [mode, pomodoroPhase, settings.sounds, setOnComplete, cdStart]);
+  }, [mode, settings.sounds, setOnComplete]);
 
   const handleModeChange = (newMode: TimerMode) => {
     setMode(newMode);
     if (newMode === 'temporizador') countdown.setTarget(25);
-    else if (newMode === 'pomodoro') { countdown.setTarget(25); setPomodoroPhase('work'); setPomodoroCycle(0); }
+    else if (newMode === 'pomodoro') { countdown.setTarget(timerSettings.pomodoroFocus); setPomodoroPhase('work'); setPomodoroCycle(0); }
+    else if (newMode === 'intervalos') { setIntervalRun(null); countdown.reset(); }
   };
 
-  const handlePomodoroSkip = () => {
-    if (pomodoroPhase === 'work') { setPomodoroPhase('break'); setPomodoroCycle((c) => c + 1); countdown.start(BREAK_SEC); }
-    else { setPomodoroPhase('work'); countdown.start(WORK_SEC); }
+  const handlePomodoroSkip = () => advancePomodoro();
+
+  const handleStartInterval = (interval: CustomInterval) => {
+    setIntervalRun({ interval, round: 1, phase: 'focus' });
+    cdStart(interval.focusMin * 60);
   };
 
   const handleDiscard = () => {
     if (mode === 'rastreador') tracker.discard();
-    else countdown.reset();
+    else { countdown.reset(); setIntervalRun(null); }
     // Limpia taskId del draft para que no se herede en la próxima sesión
     tracker.setDraft((d) => ({ ...d, taskId: undefined, avanceTaskId: undefined }));
     setShowFocus(false);
@@ -146,7 +181,15 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
       await tracker.saveSession(elapsed, timerMode);
       if (settings.sounds) playCompleteSound();
     }
+    // Duraciones recientes del temporizador (máximo 5, sin repetir).
+    if (mode === 'temporizador') {
+      const used = Math.round(countdown.targetSeconds / 60);
+      if (used > 0) {
+        updateTimerSettings('recentDurations', [used, ...timerSettings.recentDurations.filter((m) => m !== used)].slice(0, 5));
+      }
+    }
     countdown.reset();
+    setIntervalRun(null);
     handleTaskAfterSession(actualTaskId, completeTask, avanceTaskId);
     // Limpia taskId del draft para que la próxima sesión no se asocie a esta tarea
     tracker.setDraft((d) => ({ ...d, taskId: undefined, avanceTaskId: undefined }));
@@ -181,6 +224,11 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
     onTaskIdChange: (id: string | undefined) => tracker.setDraft((d) => ({ ...d, taskId: id })),
     onCreateActivity: (name: string, color: string) => tracker.addActivity(name, color),
     countdown, pomodoroPhase, pomodoroCycle, onPomodoroSkip: handlePomodoroSkip,
+    intervalRun: intervalRun
+      ? { name: intervalRun.interval.name, round: intervalRun.round, rounds: intervalRun.interval.rounds, phase: intervalRun.phase }
+      : null,
+    onStartInterval: handleStartInterval,
+    onIntervalSkip: advanceInterval,
   };
 
   return (
@@ -244,8 +292,19 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
               {mode === 'pomodoro' && (
                 <>
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: pomodoroPhase === 'work' ? '#7f70ff' : '#34c77b' }} />
-                  <span className="text-[14px] font-medium text-[#333] flex-1">{pomodoroPhase === 'work' ? 'Trabajo' : 'Descanso'} · Ciclo {pomodoroCycle}</span>
+                  <span className="text-[14px] font-medium text-[#333] flex-1">
+                    {pomodoroPhase === 'work' ? 'Trabajo' : pomodoroPhase === 'longBreak' ? 'Descanso largo' : 'Descanso'} · Ciclo {pomodoroCycle}
+                  </span>
                   <span className="text-[15px] font-bold tabular-nums shrink-0" style={{ color: pomodoroPhase === 'work' ? '#7f70ff' : '#34c77b' }}>{formatElapsed(activeElapsed)}</span>
+                </>
+              )}
+              {mode === 'intervalos' && (
+                <>
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: intervalRun?.phase === 'rest' ? '#34c77b' : '#7f70ff' }} />
+                  <span className="text-[14px] font-medium text-[#333] flex-1 truncate">
+                    {intervalRun ? `${intervalRun.phase === 'focus' ? 'Enfoque' : 'Descanso'} ${intervalRun.round}/${intervalRun.interval.rounds} · ${intervalRun.interval.name}` : 'Intervalos'}
+                  </span>
+                  <span className="text-[15px] font-bold tabular-nums shrink-0" style={{ color: intervalRun?.phase === 'rest' ? '#34c77b' : '#7f70ff' }}>{formatElapsed(activeElapsed)}</span>
                 </>
               )}
             </motion.div>

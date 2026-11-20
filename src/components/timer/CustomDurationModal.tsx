@@ -6,13 +6,22 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onSave: (hours: number, minutes: number) => void;
+  /** Título del modal; por defecto "Duración personalizada". */
+  title?: string;
+  /** Minutos con los que abre el selector (por defecto 25). */
+  initialMinutes?: number;
 }
 
 const ITEM_HEIGHT = 40;
 const VISIBLE_ITEMS = 3;
 const CONTAINER_HEIGHT = ITEM_HEIGHT * VISIBLE_ITEMS;
 
-function WheelPicker({ value, min, max, onChange }: { value: number; min: number; max: number; onChange: (n: number) => void }) {
+/**
+ * Selector de rueda de horas o minutos. `boxed` (por defecto) es el recuadro con
+ * relieve del modal; `flat` lo deja suelto, sin fondo ni bandas, para incrustarlo
+ * directamente en una pantalla.
+ */
+export function WheelPicker({ value, min, max, onChange, variant = 'boxed' }: { value: number; min: number; max: number; onChange: (n: number) => void; variant?: 'boxed' | 'flat' }) {
   const ref = useRef<HTMLDivElement>(null);
   const isScrollingRef = useRef(false);
 
@@ -36,9 +45,15 @@ function WheelPicker({ value, min, max, onChange }: { value: number; min: number
     (handleScroll as any)._t = window.setTimeout(() => { isScrollingRef.current = false; }, 80);
   };
 
+  const flat = variant === 'flat';
   return (
-    <div className="relative overflow-hidden bg-[#f7f6f9] rounded-2xl shadow-[inset_2px_2px_5px_#e6e6e6,inset_-2px_-2px_5px_#ffffff]" style={{ height: CONTAINER_HEIGHT, width: 80 }}>
-      <div className="absolute top-1/2 left-0 right-0 -translate-y-1/2 border-y border-[#e0deea] pointer-events-none z-10" style={{ height: ITEM_HEIGHT }} />
+    <div
+      className={`relative overflow-hidden ${flat ? '' : 'bg-[#f7f6f9] rounded-2xl shadow-[inset_2px_2px_5px_#e6e6e6,inset_-2px_-2px_5px_#ffffff]'}`}
+      style={{ height: CONTAINER_HEIGHT, width: 80 }}
+    >
+      {!flat && (
+        <div className="absolute top-1/2 left-0 right-0 -translate-y-1/2 border-y border-[#e0deea] pointer-events-none z-10" style={{ height: ITEM_HEIGHT }} />
+      )}
       <div
         ref={ref}
         onScroll={handleScroll}
@@ -55,14 +70,18 @@ function WheelPicker({ value, min, max, onChange }: { value: number; min: number
   );
 }
 
-export function CustomDurationModal({ isOpen, onClose, onSave }: Props) {
+export function CustomDurationModal({ isOpen, onClose, onSave, title = 'Duración personalizada', initialMinutes = 25 }: Props) {
   useBackHandler(isOpen, onClose);
   const [hours, setHours] = useState(0);
   const [minutes, setMinutes] = useState(25);
 
   useEffect(() => {
-    if (isOpen) { setHours(0); setMinutes(25); }
-  }, [isOpen]);
+    if (isOpen) {
+      const total = Math.max(0, initialMinutes);
+      setHours(Math.floor(total / 60));
+      setMinutes(total % 60);
+    }
+  }, [isOpen, initialMinutes]);
 
   return (
     <AnimatePresence>
@@ -79,7 +98,7 @@ export function CustomDurationModal({ isOpen, onClose, onSave }: Props) {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="px-5 pt-5 pb-2 flex items-center justify-between shrink-0">
-                <span className="text-[16px] font-bold text-[#333]">Duración personalizada</span>
+                <span className="text-[16px] font-bold text-[#333]">{title}</span>
                 <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-[#f7f6f9] border-none cursor-pointer">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18" /><path d="M6 6l12 12" /></svg>
                 </button>
