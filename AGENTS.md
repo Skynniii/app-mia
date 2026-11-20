@@ -128,15 +128,32 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
   entre dispositivos como el resto del documento `users/{uid}`.
 - `TimerSettingsScreen` es la pantalla de configuración exclusiva de la sección:
   se abre con el engranaje de `FocusScreen` y con el botón "Configurar pomodoro".
-  Ahí están las tres duraciones (abren `CustomDurationModal`, que acepta `title` e
-  `initialMinutes`), el stepper del descanso largo, la lista de intervalos
-  (`IntervalFormModal`) y los avisos de sonido/notificaciones (antes en el
-  desplegable del engranaje).
+  Está ordenada por modo (Rastreador, Temporizador, Pomodoro, Intervalos) y luego
+  Concentración y Avisos. Temporizador: sonido de alarma (hoja que suena cada
+  opción al tocarla) y vibración. Pomodoro: las tres duraciones (abren
+  `CustomDurationModal`, que acepta `title` e `initialMinutes`) y el stepper del
+  descanso largo. Intervalos: la lista (`IntervalFormModal`). Concentración: tema,
+  arranque automático y pantalla encendida. Avisos: sonidos y notificaciones.
 - Temporizador: antes de empezar se muestra el selector de horas y minutos
-  (`WheelPicker` con `variant="flat"`, sin recuadro) con botones − / + de un
-  minuto y las duraciones recientes (máximo 5 distintas; si no hay, 5/10/30/45/60).
+  (`WheelPicker` con `variant="flat"`, sin recuadro) y las duraciones recientes
+  (máximo 4 distintas; si no hay, 5/10/30/60). Los botones − / + de un minuto
+  **solo** existen con el temporizador ya en marcha y van debajo del anillo
+  (`countdown.addTime`, que mueve `remaining` y `targetSeconds` sin reiniciar).
   El anillo aparece al iniciar. Las duraciones usadas se guardan al guardar la
   sesión.
+- Alarma del temporizador: al llegar a cero no se cierra la sesión. Se abre
+  `TimerCompleteScreen` y suena en bucle el sonido elegido (`src/utils/alarm.ts`
+  sintetiza cuatro alarmas con WebAudio; no hay archivos de audio) con la
+  vibración configurada. Al silenciar se guarda la sesión con
+  `targetSeconds + espera hasta silenciar`: ese tiempo extra es parte del
+  registro. `primeAlarmAudio()` se llama en el gesto de iniciar porque los
+  móviles bloquean el audio sin interacción.
+- Modo concentración (`FocusModeScreen`): pantalla completa con el reloj, la
+  descripción y botones descoloridos (salir, pausa, saltar y terminar). Se entra
+  con el botón de la cabecera de `FocusScreen` mientras hay sesión activa, y
+  automáticamente al iniciar si `startInFocusMode` está activo. Tres temas
+  (`focusTheme`: anillo, números y onda) y `keepScreenOn` usa Screen Wake Lock
+  (`useWakeLock`).
 - El registro manual (botón del calendario con +) solo existe en Rastreador.
 - Pomodoro: debajo del anillo va la tarjeta con la configuración actual y el botón
   "Configurar pomodoro". Al terminar un enfoque toca descanso, y descanso largo

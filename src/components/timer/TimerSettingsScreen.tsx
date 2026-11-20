@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useBackHandler } from '../../hooks/useBackHandler';
 import { useSettings } from '../../context/SettingsContext';
-import { useTimerSettings, type CustomInterval } from '../../hooks/useTimerSettings';
+import { useTimerSettings, FOCUS_THEMES, type CustomInterval } from '../../hooks/useTimerSettings';
+import { ALARM_SOUNDS, playAlarmPreview } from '../../utils/alarm';
 import { CustomDurationModal } from './CustomDurationModal';
 import { IntervalFormModal } from './IntervalFormModal';
 import { BackButton, DETAIL_HEADER_TOP } from '../ui/DetailScreen';
@@ -25,6 +26,28 @@ function formatMinutes(min: number) {
   if (h > 0 && m > 0) return `${h} hr ${m} min`;
   if (h > 0) return `${h} hr`;
   return `${m} min`;
+}
+
+function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!on)}
+      className="w-[48px] h-[28px] rounded-full transition-colors duration-200 flex items-center shrink-0"
+      style={{ background: on ? 'var(--accent, #7f70ff)' : '#e0e0e0' }}
+    >
+      <span className={`block w-[24px] h-[24px] bg-white rounded-full shadow-sm transition-transform duration-200 ${on ? 'translate-x-[22px]' : 'translate-x-[2px]'}`} />
+    </button>
+  );
+}
+
+function SectionTitle({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 mb-3 mt-6 first:mt-4">
+      <h3 className="eyebrow whitespace-nowrap m-0">{children}</h3>
+      <div className="flex-1 h-px bg-[#e8e8e8] ml-1" />
+    </div>
+  );
 }
 
 function Row({ label, hint, children, onClick }: { label: string; hint?: string; children: ReactNode; onClick?: () => void }) {
@@ -53,13 +76,16 @@ function Row({ label, hint, children, onClick }: { label: string; hint?: string;
   return <div className={className}>{content}</div>;
 }
 
-/** Configuración exclusiva de la sección Timer: pomodoro, intervalos y avisos. */
+/** Configuración exclusiva de la sección Timer, ordenada por modo. */
 export function TimerSettingsScreen({ onBack }: Props) {
   useBackHandler(true, onBack);
   const { timerSettings, updateTimerSettings } = useTimerSettings();
   const { settings, update } = useSettings();
   const [durationKey, setDurationKey] = useState<DurationKey | null>(null);
   const [intervalForm, setIntervalForm] = useState<{ open: boolean; interval: CustomInterval | null }>({ open: false, interval: null });
+  const [alarmOpen, setAlarmOpen] = useState(false);
+  // El botón atrás cierra primero la hoja del sonido de alarma.
+  useBackHandler(alarmOpen, () => setAlarmOpen(false));
 
   const saveInterval = (iv: CustomInterval) => {
     updateTimerSettings('intervals', [
@@ -91,11 +117,23 @@ export function TimerSettingsScreen({ onBack }: Props) {
       </div>
 
       <div className="flex-1 px-4 pb-[100px]">
-        {/* POMODORO */}
-        <div className="flex items-center gap-2 mb-3 mt-4">
-          <h3 className="eyebrow whitespace-nowrap m-0">Pomodoro</h3>
-          <div className="flex-1 h-px bg-[#e8e8e8] ml-1" />
+        {/* RASTREADOR */}
+        <SectionTitle>Rastreador</SectionTitle>
+        <p className="text-[13px] text-[#999] m-0">El cronómetro no tiene ajustes propios. El registro manual está en el botón de calendario.</p>
+
+        {/* TEMPORIZADOR */}
+        <SectionTitle>Temporizador</SectionTitle>
+        <div className="space-y-3">
+          <Row label="Sonido de alarma" hint="Suena al terminar el temporizador" onClick={() => setAlarmOpen(true)}>
+            {ALARM_SOUNDS.find((s) => s.id === timerSettings.timerAlarmSound)?.name ?? 'Campana'}
+          </Row>
+          <Row label="Vibración" hint="Vibra junto con la alarma">
+            <Toggle on={timerSettings.timerAlarmVibrate} onChange={(v) => updateTimerSettings('timerAlarmVibrate', v)} />
+          </Row>
         </div>
+
+        {/* POMODORO */}
+        <SectionTitle>Pomodoro</SectionTitle>
         <div className="space-y-3">
           {DURATION_ROWS.map((row) => (
             <Row key={row.key} label={row.label} hint={row.hint} onClick={() => setDurationKey(row.key)}>
@@ -124,10 +162,7 @@ export function TimerSettingsScreen({ onBack }: Props) {
         </div>
 
         {/* INTERVALOS */}
-        <div className="flex items-center gap-2 mb-3 mt-6">
-          <h3 className="eyebrow whitespace-nowrap m-0">Intervalos</h3>
-          <div className="flex-1 h-px bg-[#e8e8e8] ml-1" />
-        </div>
+        <SectionTitle>Intervalos</SectionTitle>
         <div className="space-y-3">
           {timerSettings.intervals.length === 0 && (
             <p className="text-[13px] text-[#999] m-0">Crea intervalos propios de enfoque y descanso.</p>
@@ -157,22 +192,43 @@ export function TimerSettingsScreen({ onBack }: Props) {
           </button>
         </div>
 
-        {/* AVISOS */}
-        <div className="flex items-center gap-2 mb-3 mt-6">
-          <h3 className="eyebrow whitespace-nowrap m-0">Avisos</h3>
-          <div className="flex-1 h-px bg-[#e8e8e8] ml-1" />
+        {/* CONCENTRACIÓN */}
+        <SectionTitle>Concentración</SectionTitle>
+        <div className="rounded-2xl border border-[#eee] bg-[#f8f8fa] p-4 mb-3">
+          <p className="text-[15px] font-semibold text-[#333] m-0">Tema</p>
+          <p className="text-[13px] text-[#999] m-0 mt-0.5">Aspecto de la pantalla enfocada</p>
+          <div className="grid grid-cols-3 gap-2 mt-3">
+            {FOCUS_THEMES.map((t) => {
+              const active = timerSettings.focusTheme === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => updateTimerSettings('focusTheme', t.id)}
+                  className={`py-2.5 rounded-xl border cursor-pointer transition-colors ${active ? 'border-[#7f70ff] bg-white text-[#7f70ff]' : 'border-transparent bg-white/60 text-[#888]'}`}
+                >
+                  <span className="block text-[13px] font-semibold">{t.name}</span>
+                  <span className="block text-[11px] mt-0.5 opacity-70">{t.hint}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
+        <div className="space-y-3">
+          <Row label="Iniciar en concentración" hint="Abre el modo al empezar cualquier timer">
+            <Toggle on={timerSettings.startInFocusMode} onChange={(v) => updateTimerSettings('startInFocusMode', v)} />
+          </Row>
+          <Row label="Mantener pantalla encendida" hint="Durante el modo concentración">
+            <Toggle on={timerSettings.keepScreenOn} onChange={(v) => updateTimerSettings('keepScreenOn', v)} />
+          </Row>
+        </div>
+
+        {/* AVISOS */}
+        <SectionTitle>Avisos</SectionTitle>
         <div className="space-y-3">
           {([{ key: 'sounds' as const, label: 'Sonidos', hint: 'Aviso al terminar cada fase' }, { key: 'notifications' as const, label: 'Notificaciones', hint: 'Avisos del sistema' }]).map((item) => (
             <Row key={item.key} label={item.label} hint={item.hint}>
-              <button
-                type="button"
-                onClick={() => update(item.key, !settings[item.key])}
-                className="w-[48px] h-[28px] rounded-full transition-colors duration-200 flex items-center"
-                style={{ background: settings[item.key] ? 'var(--accent, #7f70ff)' : '#e0e0e0' }}
-              >
-                <span className={`block w-[24px] h-[24px] bg-white rounded-full shadow-sm transition-transform duration-200 ${settings[item.key] ? 'translate-x-[22px]' : 'translate-x-[2px]'}`} />
-              </button>
+              <Toggle on={settings[item.key]} onChange={(v) => update(item.key, v)} />
             </Row>
           ))}
         </div>
@@ -195,6 +251,61 @@ export function TimerSettingsScreen({ onBack }: Props) {
         onSave={saveInterval}
         onDelete={deleteInterval}
       />
+
+      {/* Selector de sonido de alarma (cada opción se escucha al tocarla) */}
+      <AnimatePresence>
+        {alarmOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[1200] bg-black/30 flex items-end"
+            onClick={() => setAlarmOpen(false)}
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="w-full bg-white rounded-t-3xl px-4 pt-4"
+              style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-[17px] font-bold text-[#1c1c23] m-0 mb-3 tracking-[-0.02em]">Sonido de alarma</h3>
+              <div className="space-y-2">
+                {ALARM_SOUNDS.map((s) => {
+                  const active = timerSettings.timerAlarmSound === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => { updateTimerSettings('timerAlarmSound', s.id); playAlarmPreview(s.id); }}
+                      className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border cursor-pointer text-left ${active ? 'border-[#7f70ff] bg-[#f5f3ff]' : 'border-[#eee] bg-[#f8f8fa]'}`}
+                    >
+                      <span className="min-w-0">
+                        <span className={`block text-[15px] font-semibold ${active ? 'text-[#7f70ff]' : 'text-[#333]'}`}>{s.name}</span>
+                        <span className="block text-[13px] text-[#999] mt-0.5">{s.hint}</span>
+                      </span>
+                      {active ? (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7f70ff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                      ) : (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="#bbb"><path d="M8 5v14l11-7z" /></svg>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                onClick={() => setAlarmOpen(false)}
+                className="mt-4 w-full py-3 rounded-2xl bg-[#f7f6f9] border-none text-[14px] font-semibold text-[#555] cursor-pointer"
+              >
+                Listo
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

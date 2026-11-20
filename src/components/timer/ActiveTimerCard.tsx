@@ -14,6 +14,7 @@ export interface CountdownApi {
   resume: () => void;
   reset: () => void;
   setTarget: (minutes: number) => void;
+  addTime: (seconds: number) => void;
   setOnComplete: (fn: () => void) => void;
 }
 

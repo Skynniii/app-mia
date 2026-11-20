@@ -7,6 +7,7 @@ import type { TimerMode } from '../../hooks/useCountdownTimer';
 import type { ActiveTimerCardProps } from './ActiveTimerCard';
 import { ActivityPicker } from './ActivityPicker';
 import { FocusRing } from './FocusRing';
+import { FocusModeScreen } from './FocusModeScreen';
 import { TaskPicker } from './TaskPicker';
 import { WheelPicker } from './CustomDurationModal';
 import { TimerSettingsScreen } from './TimerSettingsScreen';
@@ -17,6 +18,7 @@ import { sheetTransition } from '../../utils/motion';
 import { TimePickerModal } from '../tareas/TimePickerModal';
 import { useSettings } from '../../context/SettingsContext';
 import { hapticMedium, hapticHeavy } from '../../utils/haptic';
+import { primeAlarmAudio } from '../../utils/alarm';
 
 import { BackButton, DETAIL_HEADER_TOP } from '../ui/DetailScreen';
 import type { Task, TaskList } from '../../types';
@@ -85,6 +87,7 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
   const holdIntervalRef = useRef<number | null>(null);
   const isHoldingRef = useRef(false);
   const [timerSettingsOpen, setTimerSettingsOpen] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
   const notesRef = useRef<HTMLDivElement>(null);
   const [notesExpanded, setNotesExpanded] = useState(false);
   const wasNotesExpanded = useRef(false);
@@ -105,7 +108,6 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
   const durationHours = Math.floor(countdown.targetSeconds / 3600);
   const durationMinutes = Math.floor((countdown.targetSeconds % 3600) / 60);
   const setDuration = (totalMin: number) => countdown.setTarget(Math.min(23 * 60 + 59, Math.max(1, totalMin)));
-  const adjustDuration = (delta: number) => setDuration(Math.round(countdown.targetSeconds / 60) + delta);
   const isPhaseMode = mode === 'pomodoro' || mode === 'intervalos';
   const pomodoroPhaseLabel = pomodoroPhase === 'work' ? 'Trabajo' : pomodoroPhase === 'longBreak' ? 'Descanso largo' : 'Descanso';
 
@@ -144,14 +146,19 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   };
 
+  // Si el usuario lo activó en la configuración, empezar abre el modo concentración.
+  const enterFocusIfNeeded = () => {
+    if (timerSettings.startInFocusMode) setFocusMode(true);
+  };
+
   const handleCenterButton = () => {
     hapticMedium();
     if (mode === 'rastreador') {
-      if (!hasStarted) props.onStart();
+      if (!hasStarted) { props.onStart(); enterFocusIfNeeded(); }
       else if (isTicking) props.onPause();
       else props.onResume();
     } else {
-      if (!hasStarted) countdown.start();
+      if (!hasStarted) { primeAlarmAudio(); countdown.start(); enterFocusIfNeeded(); }
       else if (countdown.running) countdown.pause();
       else countdown.start();
     }
@@ -300,7 +307,12 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
             )}
           </AnimatePresence>
         </div>
-        <div className="relative">
+        <div className="flex items-center gap-1">
+          {hasStarted && (
+            <button onClick={() => setFocusMode(true)} title="Modo concentración" className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors active:scale-90">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" /></svg>
+            </button>
+          )}
           <button onClick={() => setTimerSettingsOpen(true)} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors active:scale-90">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
           </button>
@@ -314,24 +326,16 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
           {mode === 'temporizador' && !hasStarted ? (
             /* Selector de duración: horas y minutos, sin el anillo */
             <div className="w-full flex flex-col items-center">
-              <div className="flex items-center justify-center gap-2">
-                <button onClick={() => adjustDuration(-1)} title="Un minuto menos" className="w-10 h-10 rounded-full bg-[#f7f6f9] border-none cursor-pointer flex items-center justify-center text-[#7f70ff] active:scale-90 transition-transform">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                </button>
-                <div className="flex items-start justify-center gap-2">
-                  <div className="flex flex-col items-center gap-1">
-                    <span className="eyebrow">Horas</span>
-                    <WheelPicker variant="flat" value={durationHours} min={0} max={23} onChange={(h) => setDuration(h * 60 + durationMinutes)} />
-                  </div>
-                  <span className="text-[26px] font-bold text-[#ccc] pt-[52px]">:</span>
-                  <div className="flex flex-col items-center gap-1">
-                    <span className="eyebrow">Minutos</span>
-                    <WheelPicker variant="flat" value={durationMinutes} min={0} max={59} onChange={(m) => setDuration(durationHours * 60 + m)} />
-                  </div>
+              <div className="flex items-start justify-center gap-2">
+                <div className="flex flex-col items-center gap-1">
+                  <span className="eyebrow">Horas</span>
+                  <WheelPicker variant="flat" value={durationHours} min={0} max={23} onChange={(h) => setDuration(h * 60 + durationMinutes)} />
                 </div>
-                <button onClick={() => adjustDuration(1)} title="Un minuto más" className="w-10 h-10 rounded-full bg-[#f7f6f9] border-none cursor-pointer flex items-center justify-center text-[#7f70ff] active:scale-90 transition-transform">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                </button>
+                <span className="text-[26px] font-bold text-[#ccc] pt-[52px]">:</span>
+                <div className="flex flex-col items-center gap-1">
+                  <span className="eyebrow">Minutos</span>
+                  <WheelPicker variant="flat" value={durationMinutes} min={0} max={59} onChange={(m) => setDuration(durationHours * 60 + m)} />
+                </div>
               </div>
 
               {/* Duraciones recientes */}
@@ -349,7 +353,7 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
               ) : (
                 <div className="flex flex-col gap-2">
                   {timerSettings.intervals.map((iv) => (
-                    <button key={iv.id} onClick={() => onStartInterval(iv)} className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-[#f7f6f9] border-none cursor-pointer text-left active:scale-[0.99] transition-transform">
+                    <button key={iv.id} onClick={() => { primeAlarmAudio(); onStartInterval(iv); enterFocusIfNeeded(); }} className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-[#f7f6f9] border-none cursor-pointer text-left active:scale-[0.99] transition-transform">
                       <span className="flex-1 min-w-0">
                         <span className="block text-[15px] font-semibold text-[#333] truncate">{iv.name}</span>
                         <span className="block text-[12px] text-[#8b8b98] mt-0.5">{formatDurationLabel(iv.focusMin)} · {formatDurationLabel(iv.restMin)} descanso · {iv.rounds} rondas</span>
@@ -372,6 +376,18 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
                   </div>
                 </FocusRing>
               </div>
+
+              {/* Ajuste de un minuto: solo con el temporizador ya en marcha */}
+              {mode === 'temporizador' && hasStarted && (
+                <div className="flex items-center gap-2 mt-4">
+                  <button onClick={() => countdown.addTime(-60)} className="px-4 py-2 rounded-full bg-[#f7f6f9] border-none cursor-pointer text-[13px] font-semibold text-[#777] active:scale-95 transition-transform">
+                    − 1 min
+                  </button>
+                  <button onClick={() => countdown.addTime(60)} className="px-4 py-2 rounded-full bg-[#f7f6f9] border-none cursor-pointer text-[13px] font-semibold text-[#7f70ff] active:scale-95 transition-transform">
+                    + 1 min
+                  </button>
+                </div>
+              )}
 
               {mode === 'pomodoro' && (
                 <div className="flex items-center gap-2 mt-3">
@@ -668,6 +684,26 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
       <TaskPicker isOpen={taskPickerOpen} onClose={() => setTaskPickerOpen(false)} lists={taskLists} tasks={tasks} onSelect={handleSelectTask} />
       <AnimatePresence>
         {timerSettingsOpen && <TimerSettingsScreen key="timer-settings" onBack={() => setTimerSettingsOpen(false)} />}
+      </AnimatePresence>
+
+      {/* Modo concentración: reloj y lo esencial, sin la pantalla de edición */}
+      <AnimatePresence>
+        {focusMode && hasStarted && (
+          <FocusModeScreen
+            key="focus-mode"
+            theme={timerSettings.focusTheme}
+            timeDisplay={timeDisplay}
+            progress={progress}
+            color={ringColor}
+            title={props.draft.description?.trim() || activity?.name || ''}
+            isRunning={isRunning}
+            keepScreenOn={timerSettings.keepScreenOn}
+            onToggle={handleCenterButton}
+            onSkip={isPhaseMode ? handleSkipPhase : undefined}
+            onFinish={() => { setFocusMode(false); onSaveSession(false, selectedTask?.id ?? props.draft.taskId); }}
+            onExit={() => setFocusMode(false)}
+          />
+        )}
       </AnimatePresence>
     </motion.div>
   );

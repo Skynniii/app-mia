@@ -14,6 +14,7 @@ import { sortListsForDisplay } from '../../utils/listOrder';
 import { SectionHeader } from '../ui/SectionHeader';
 import { TodaySummary } from './TodaySummary';
 import { FocusScreen } from './FocusScreen';
+import { TimerCompleteScreen } from './TimerCompleteScreen';
 import { EntryList } from './EntryList';
 import { SessionDetailModal } from './SessionDetailModal';
 import type { Task, TaskList, TimerMode as AppTimerMode } from '../../types';
@@ -35,6 +36,9 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
   const [pomodoroCycle, setPomodoroCycle] = useState(0);
   const [intervalRun, setIntervalRun] = useState<{ interval: CustomInterval; round: number; phase: 'focus' | 'rest' } | null>(null);
   const [showFocus, setShowFocus] = useState(false);
+  // Momento en que el temporizador llegó a cero: mientras no se silencie la
+  // alarma, el tiempo extra se suma a la sesión.
+  const [timerFinishedAt, setTimerFinishedAt] = useState<number | null>(null);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
 
   const listsColl = useFirestoreCollection<TaskList>(uid, 'taskLists');
@@ -138,6 +142,12 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
 
   useEffect(() => {
     setOnComplete(() => {
+      // El temporizador no avanza solo: entra en la pantalla de completado con
+      // la alarma sonando hasta que el usuario la silencie.
+      if (mode === 'temporizador') {
+        setTimerFinishedAt(Date.now());
+        return;
+      }
       if (settings.sounds) playCompleteSound();
       if (mode === 'pomodoro') phaseHandlers.current.advancePomodoro();
       else if (mode === 'intervalos') phaseHandlers.current.advanceInterval();
@@ -159,6 +169,7 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
   };
 
   const handleDiscard = () => {
+    setTimerFinishedAt(null);
     if (mode === 'rastreador') tracker.discard();
     else { countdown.reset(); setIntervalRun(null); }
     // Limpia taskId del draft para que no se herede en la próxima sesión
@@ -181,17 +192,37 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
       await tracker.saveSession(elapsed, timerMode);
       if (settings.sounds) playCompleteSound();
     }
-    // Duraciones recientes del temporizador (máximo 5, sin repetir).
+    // Duraciones recientes del temporizador (máximo 4, sin repetir).
     if (mode === 'temporizador') {
       const used = Math.round(countdown.targetSeconds / 60);
       if (used > 0) {
-        updateTimerSettings('recentDurations', [used, ...timerSettings.recentDurations.filter((m) => m !== used)].slice(0, 5));
+        updateTimerSettings('recentDurations', [used, ...timerSettings.recentDurations.filter((m) => m !== used)].slice(0, 4));
       }
     }
     countdown.reset();
     setIntervalRun(null);
     handleTaskAfterSession(actualTaskId, completeTask, avanceTaskId);
     // Limpia taskId del draft para que la próxima sesión no se asocie a esta tarea
+    tracker.setDraft((d) => ({ ...d, taskId: undefined, avanceTaskId: undefined }));
+    setShowFocus(false);
+  };
+
+  // Silenciar la alarma guarda la sesión con el tiempo total: lo configurado
+  // más la espera hasta apagarla.
+  const handleSilenceAlarm = async () => {
+    if (timerFinishedAt === null) return;
+    const extra = Math.max(0, Math.floor((Date.now() - timerFinishedAt) / 1000));
+    const total = countdown.targetSeconds + extra;
+    const used = Math.round(countdown.targetSeconds / 60);
+    const taskId = tracker.draft.taskId;
+    const avanceTaskId = tracker.draft.avanceTaskId;
+    setTimerFinishedAt(null);
+    await tracker.saveSession(total, 'timer');
+    if (used > 0) {
+      updateTimerSettings('recentDurations', [used, ...timerSettings.recentDurations.filter((m) => m !== used)].slice(0, 4));
+    }
+    countdown.reset();
+    handleTaskAfterSession(taskId, false, avanceTaskId);
     tracker.setDraft((d) => ({ ...d, taskId: undefined, avanceTaskId: undefined }));
     setShowFocus(false);
   };
@@ -331,6 +362,21 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
               tracker.setDraft((d) => ({ ...d, taskId: undefined, avanceTaskId: undefined }));
               setShowFocus(false);
             }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Temporizador completado: alarma sonando hasta silenciarla */}
+      <AnimatePresence>
+        {timerFinishedAt !== null && (
+          <TimerCompleteScreen
+            key="timer-complete"
+            targetSeconds={countdown.targetSeconds}
+            finishedAt={timerFinishedAt}
+            soundEnabled={settings.sounds}
+            sound={timerSettings.timerAlarmSound}
+            vibrate={timerSettings.timerAlarmVibrate}
+            onSilence={handleSilenceAlarm}
           />
         )}
       </AnimatePresence>
