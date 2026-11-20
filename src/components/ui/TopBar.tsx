@@ -29,7 +29,7 @@ export function TopBar({ title, onMenuClick, onOpenAccount }: Props) {
   const showPhoto = photoURL && !photoError;
 
   return (
-    <div className="flex items-center justify-between px-1 pt-5 pb-7 relative" ref={ref}>
+    <div className="flex items-center justify-between px-1 pt-5 pb-4 relative" ref={ref}>
       <button onClick={onMenuClick} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors active:scale-90">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round">
           <line x1="3" y1="6" x2="21" y2="6" />
@@ -38,7 +38,7 @@ export function TopBar({ title, onMenuClick, onOpenAccount }: Props) {
         </svg>
       </button>
 
-      <h1 className="text-[#2b2b2b] font-semibold text-[26px] leading-none tracking-[-0.02em] m-0">{title}</h1>
+      <h1 className="text-[#2b2b2b] font-semibold text-[31px] leading-none tracking-[-0.02em] m-0">{title}</h1>
 
       <button onClick={() => setProfileOpen(!profileOpen)} className="w-9 h-9 rounded-full flex items-center justify-center shadow-sm active:scale-90 transition-transform overflow-hidden relative bg-gradient-to-br from-[#7f70ff] to-[#9d8aff]">
         {showPhoto ? (
