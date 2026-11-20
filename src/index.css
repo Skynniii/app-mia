@@ -1,10 +1,13 @@
 @import "tailwindcss";
 
-/* Tipografía: la del sistema (SF Pro en iPhone/iPad/Mac), como en las capturas. */
+/* Tipografía: Inter para una lectura limpia y consistente en todos los
+   dispositivos (la del sistema como respaldo si la fuente no carga). */
 body {
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-optical-sizing: auto;
+  letter-spacing: -0.011em;
   background-color: #f7f6f9;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -17,6 +20,16 @@ body {
 
 * {
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Etiqueta de sección: mismo tamaño, peso y tracking en toda la app. */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #8b8b98;
 }
 
 /* Performance: GPU acceleration for animated elements */

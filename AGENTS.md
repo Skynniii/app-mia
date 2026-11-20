@@ -39,6 +39,30 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
   las listas de Tasks), tarjetas `rounded-[16px]`, padding interno `p-4` y filas
   `px-4`. Para nuevas tarjetas de esas secciones, usa esas mismas clases.
 
+## Tipografía y jerarquía
+
+- La fuente es **Inter** (variable, cargada en `index.html` desde Google Fonts) con
+  la pila del sistema como respaldo en `src/index.css`. El `body` lleva
+  `letter-spacing: -0.011em`: no añadas tracking positivo al texto normal.
+- Escala de referencia (mantén estos valores para que las secciones se vean igual):
+  - Título de sección: `text-[25px] font-bold tracking-[-0.03em]` en `TopBar`
+    (centrado entre el botón de menú y el avatar). No lo cambies por sección.
+  - Títulos de pantalla completa y de lista: 22px y 21px, `font-bold`,
+    `tracking-[-0.03em]` / `tracking-[-0.025em]`.
+  - Etiquetas de sección ("Hoy", "Historial", "Actividades"…): clase `.eyebrow`
+    de `src/index.css` (11px, 600, mayúsculas, `0.09em`). No repitas clases
+    `text-[12px] font-bold uppercase tracking-wider` a mano.
+  - Texto principal de filas y tarjetas: 15px `font-medium`
+    `tracking-[-0.01em]`; texto secundario 13px; metadatos 12px.
+  - Números destacados (tiempo total, día del calendario): 32px `font-bold`
+    `tabular-nums tracking-[-0.04em]`.
+- Colores de tinta: principal `#1c1c23`, cuerpo `#333`, secundario `#777`,
+  apagado `#8b8b98`/`#a0a0a0`.
+- Horas: usa `src/utils/timeFormat.ts` (`formatClockDate`, `formatHHMM`,
+  `formatTimeParts`). En formato de 12 h el sufijo va siempre como "AM"/"PM"
+  pegado a la hora ("2:42 PM"); nunca `toLocaleTimeString('es-CO')` (devuelve
+  "p. m.") ni sufijos en minúscula.
+
 ## Barra de estado en Android (Capacitor)
 
 - `android/app/src/main/java/com/lumina/app/MainActivity.java` activa edge-to-edge
@@ -70,9 +94,11 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
   interior del modal o el botón Notas cuando la nota está vacía (con contenido
   solo lo cierra el botón); el editor de notas y la barra de formato hacen
   `stopPropagation` para no cerrarlo al escribir.
-- `NuevaTareaModal` entra deslizándose desde abajo (`y: '100%' → 0`, 240 ms) y
-  enfoca el título a los 240 ms: el teclado sube después y empuja el modal.
-  No vuelvas a usar `autoFocus`: enfocaba antes de entrar y el modal parpadeaba.
+- `NuevaTareaModal` entra deslizándose desde abajo (`y: '100%' → 0`, 200 ms) y
+  enfoca el título en `onAnimationComplete`, justo al terminar de entrar: el
+  teclado empieza a subir en ese frame y empuja el modal, sin espera fija (un
+  `setTimeout` dejaba un hueco visible entre la llegada y el teclado). No vuelvas
+  a usar `autoFocus`: enfoca antes de entrar y el modal parpadea.
 - El panel solo compensa `bottom` con el `visualViewport` cuando el layout **no**
   cambia (teclado superpuesto, p. ej. iOS) y tras dos lecturas estables. Con
   `resizes-content` el navegador ya arrastra el panel; compensar además duplicaba
@@ -94,6 +120,89 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
   `android/capacitor.settings.gradle` y `android/app/capacitor.build.gradle`
   (es lo que genera `npx cap sync android`).
 
+## Sección Timer (pantalla Focus)
+
+- Modos en `src/hooks/useCountdownTimer.ts` (`TimerMode`): `rastreador`,
+  `temporizador`, `pomodoro` e `intervalos`. El modo elegido se guarda en
+  `timer-mode` (`useUserStorage`).
+- La configuración propia de la sección vive en `timer-settings`
+  (`src/hooks/useTimerSettings.ts`: duraciones del pomodoro, cada cuántas sesiones
+  toca el descanso largo, últimas duraciones del temporizador e intervalos).
+  La leen tanto `FocusScreen` como `TimerSettingsScreen`, así que se sincroniza
+  entre dispositivos como el resto del documento `users/{uid}`.
+- `TimerSettingsScreen` es la pantalla de configuración exclusiva de la sección:
+  se abre con el engranaje de `FocusScreen` y con el botón "Configurar pomodoro".
+  Está ordenada por modo (Rastreador, Temporizador, Pomodoro, Intervalos) y luego
+  Concentración y Avisos. Temporizador: sonido de alarma (hoja que suena cada
+  opción al tocarla) y vibración. Pomodoro: las tres duraciones (abren
+  `CustomDurationModal`, que acepta `title` e `initialMinutes`) y el stepper del
+  descanso largo. Intervalos: la lista (`IntervalFormModal`). Concentración: tema,
+  arranque automático y pantalla encendida. Avisos: sonidos y notificaciones.
+- Temporizador: antes de empezar se muestra el selector de horas y minutos
+  (`WheelPicker` con `variant="flat"`, sin recuadro) y las duraciones recientes
+  (máximo 4 distintas; si no hay, 5/10/30/60). Al tocar una duración reciente la
+  rueda rueda hasta ese tiempo (`scrollTo({ behavior: 'smooth' })` en
+  `WheelPicker`). El selector y el anillo se intercambian con
+  `AnimatePresence mode="wait"` (el reloj entra con muelle), no con un cambio
+  plano. Los botones − / + **solo** existen con el temporizador en marcha, van
+  debajo del anillo, muestran solo el signo y suman/restan
+  `timerAdjustMinutes` (1, 2, 5 o 10 min, ajustable en la configuración); usan
+  `countdown.addTime`, que mueve `remaining` y `targetSeconds` sin reiniciar. Las
+  duraciones usadas se guardan al guardar la sesión.
+- Anillo (`FocusRing`): se llena al empezar y se vacía con la cuenta. El
+  desplazamiento del trazo es **negativo** (`-circunferencia * (1 - progreso)`)
+  para que el hueco crezca en sentido horario, el mismo en el que gira el brillo.
+  El brillo blanco va dentro de una máscara con el arco que queda lleno, así que
+  se ve sobre la línea de color y se recorta a medida que el anillo se vacía.
+- Alarma del temporizador: al llegar a cero no se cierra la sesión. Se abre
+  `TimerCompleteScreen` y suena en bucle el sonido elegido (`src/utils/alarm.ts`
+  sintetiza cuatro alarmas con WebAudio; no hay archivos de audio) con la
+  vibración configurada. Al silenciar se guarda la sesión con
+  `targetSeconds + espera hasta silenciar`: ese tiempo extra es parte del
+  registro. `primeAlarmAudio()` se llama en el gesto de iniciar porque los
+  móviles bloquean el audio sin interacción.
+- Modo concentración (`FocusModeScreen`): pantalla completa con la actividad
+  arriba del reloj (pastilla con el color de la actividad, que también tiñe el
+  anillo), la descripción debajo y botones descoloridos (salir, pausa, saltar y
+  terminar). Se entra con el botón de la cabecera de `FocusScreen` mientras hay
+  sesión activa, y automáticamente al iniciar si `startInFocusMode` está activo.
+  Dos temas (`focusTheme`: `anillo` y `numeros`) y fondo claro u oscuro
+  (`focusAppearance`); el tema retirado `onda` se normaliza a `anillo` en
+  `useTimerSettings`. El anillo mide 280 y el tiempo se muestra compacto
+  (`MM:SS` sin horas, `H:MM:SS` con horas); el tema de números apila los grupos
+  en vertical, grandes y centrados. La prop `bars` pinta una barrita por fase
+  con el ancho de su duración: pomodoro (`pomodoroLongBreakEvery` sesiones) e
+  intervalos (los minutos de cada paso). `keepScreenOn` usa Screen Wake Lock
+  (`useWakeLock`).
+- El registro manual (botón del calendario con +) solo existe en Rastreador.
+- Pomodoro: debajo del anillo va una línea con la configuración actual
+  (`25 min · 5 min · 15 min · 4/4`) y el botón "Configurar pomodoro", que abre
+  `TimerSettingsScreen` desplazada a su sección (`initialSection`). Secuencia:
+  enfoque → descanso → … → último enfoque → descanso largo → alarma final
+  (`PomodoroCompleteScreen`, suena hasta silenciarla y entonces se guarda el
+  enfoque acumulado). `pomodoroElapsed` acumula el enfoque de cada sesión (al
+  completar o al saltar), así que guardar a medias también registra lo hecho.
+  Con `pomodoroAutoStart` la siguiente sesión arranca sola y suena un aviso corto
+  distinto para enfoque, descanso y descanso largo (`playPhaseSound`); apagado,
+  deja el contador preparado y el usuario lo pone en marcha.
+- Registros: cada sesión se guarda con su modo (`stopwatch`, `timer`, `pomodoro`,
+  `interval`) y la lista de historial lo muestra como etiqueta
+  (`src/utils/sessionMode.ts`).
+- Barra inferior de `FocusScreen`: flota en absoluto sobre el contenido, con un
+  velo en degradado (sin franja sólida) y `pointer-events-none` fuera de los
+  botones. El contenido lleva `pb-44` para no quedar debajo.
+- Con pomodoro o intervalos en marcha la barra inferior tiene cuatro botones:
+  X, play/pausa, saltar fase y check (pulsación larga = completar tarea).
+- Intervalos: cada intervalo es una secuencia propia (`steps`, máximo
+  `MAX_INTERVAL_STEPS` = 10) sin enfoque/descanso por defecto: el usuario añade
+  "Intervalo 1, Intervalo 2…" con nombre y minutos editables. En
+  `IntervalFormModal` el nombre es un campo, los minutos se cambian con − / + y
+  al tocar el número se abre `CustomDurationModal`. Los pasos se reproducen en
+  orden; al acabar el último el contador se queda en 00:00 para guardar y el
+  tiempo se acumula (`intervalElapsed`) para registrarlo todo. En la vista
+  principal el botón "+ Nuevo intervalo" abre el modal directamente y solo se
+  muestra cuando no hay ninguno; con al menos uno, solo aparece en configuración.
+
 ## Sección Calendario
 
 - `src/hooks/useCalendarData.ts` es la única fuente de datos del calendario: cruza
@@ -109,6 +218,11 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
   `users/{uid}` con la clave `calendar-layers` (`useUserStorage`).
 - Los eventos ya **no** se siembran para usuarios nuevos (`useCalendarEvents`):
   el calendario arranca vacío y solo muestra lo que el usuario crea.
+- La agenda se queda oculta (`visibility: hidden`) hasta que el día de hoy está
+  anclado arriba. Ese anclaje reintenta en el siguiente frame si el contenedor con
+  scroll todavía no está enganchado (el orden del commit cambia entre
+  dispositivos), y hay un temporizador de seguridad que la muestra igualmente: sin
+  eso, en algunos móviles la sección abría en blanco hasta pulsar "Hoy".
 - `NuevaTareaModal` acepta `initialDate` para crear una tarea fechada desde el
   calendario; se guarda con `addTaskWithData` de `useTasks`, así que aparece igual
   en la sección de Tasks. El botón + de la barra de navegación abre

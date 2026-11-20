@@ -4,6 +4,8 @@ import { formatElapsed, todayKey, isoToDateKey } from '../../hooks/useTimeTracke
 import type { Activity, TimeSession } from '../../types';
 import { useDeviceCapability } from '../../context/DeviceCapabilityContext';
 import { useSettings } from '../../context/SettingsContext';
+import { formatClockDate } from '../../utils/timeFormat';
+import { SessionModeIcon } from './SessionModeIcon';
 
 interface Props {
   entries: TimeSession[];
@@ -94,10 +96,10 @@ export function TodaySummary({ entries, activities, liveElapsed, isRunning, live
     <div className="flex flex-col gap-2">
       <div className="bg-white p-4 rounded-[16px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <p className="text-[13px] font-semibold text-[#999] uppercase tracking-wide m-0">Hoy</p>
+          <p className="eyebrow m-0">Hoy</p>
           <div className="flex items-center gap-2">
             {isRunning && <span className="w-2 h-2 rounded-full bg-[#34c77b] animate-pulse" />}
-            <span className="text-[36px] font-bold text-[#333] tabular-nums leading-none">{formatElapsed(total)}</span>
+            <span className="text-[32px] font-bold text-[#1c1c23] tabular-nums leading-none tracking-[-0.04em]">{formatElapsed(total)}</span>
           </div>
         </div>
 
@@ -142,13 +144,14 @@ export function TodaySummary({ entries, activities, liveElapsed, isRunning, live
                         className={`flex items-center gap-3 py-1.5 pl-[18px] text-left bg-transparent border-none w-full ${s.entry ? 'cursor-pointer' : 'cursor-default'}`}
                       >
                         <span className="w-1 h-6 rounded-full shrink-0" style={{ background: g.color }} />
+                        <SessionModeIcon mode={s.entry?.mode} size={13} className="text-[#b3b0bd]" />
                         <div className="flex-1 min-w-0">
                           <p className="text-[12px] text-[#999] truncate flex items-center gap-1.5 m-0">
                             {s.isLive && <span className="w-1.5 h-1.5 rounded-full bg-[#34c77b] animate-pulse shrink-0" />}
                             {s.description}
                           </p>
                           <p className="text-[11px] text-[#b0b0b0] m-0">
-                            {s.isLive ? 'En curso' : `${new Date(s.entry!.startTime).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: settings.timeFormat === '12h' })} – ${new Date(s.entry!.endTime).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: settings.timeFormat === '12h' })}`}
+                            {s.isLive ? 'En curso' : `${formatClockDate(s.entry!.startTime, settings.timeFormat)} – ${formatClockDate(s.entry!.endTime, settings.timeFormat)}`}
                           </p>
                         </div>
                         <span className="text-[12px] font-semibold text-[#555] tabular-nums shrink-0">{formatElapsed(s.seconds)}</span>

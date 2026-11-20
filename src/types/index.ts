@@ -1,6 +1,6 @@
 export type ViewType = 'cronometro' | 'habitos' | 'tracker' | 'calendar';
 export type SortMode = 'custom' | 'date' | 'deadline' | 'recent';
-export type TimerMode = 'stopwatch' | 'timer' | 'pomodoro';
+export type TimerMode = 'stopwatch' | 'timer' | 'pomodoro' | 'interval';
 
 export interface SubTask {
   id: string;

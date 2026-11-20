@@ -126,7 +126,7 @@ export function Tracker({ onMenuClick, onOpenAccount, onNavigate }: Props) {
           {/* Separador */}
           <div className="flex items-center gap-3">
             <div className="flex-1 h-px bg-[#eceaf3]" />
-            <span className="text-[12px] font-bold uppercase tracking-wider text-[#a0a0a0]">Actividades</span>
+            <span className="eyebrow">Actividades</span>
             <div className="flex-1 h-px bg-[#eceaf3]" />
           </div>
 

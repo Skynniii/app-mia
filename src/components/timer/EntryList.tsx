@@ -2,6 +2,8 @@ import { memo, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { dayLabel, formatElapsed, isoToDateKey } from '../../hooks/useTimeTracker';
 import { useSettings } from '../../context/SettingsContext';
+import { SessionModeIcon } from './SessionModeIcon';
+import { formatClockDate } from '../../utils/timeFormat';
 import type { Activity, TimeSession } from '../../types';
 
 interface Props {
@@ -24,7 +26,7 @@ export const EntryList = memo(function EntryList({ entries, activities, onSelect
   const { settings } = useSettings();
 
   // Hora según el formato elegido en ajustes (12h / 24h)
-  const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: settings.timeFormat === '12h' });
+  const fmtTime = (iso: string) => formatClockDate(iso, settings.timeFormat);
 
   const groups = useMemo(() => {
     const map = new Map<string, TimeSession[]>();
@@ -125,9 +127,10 @@ export const EntryList = memo(function EntryList({ entries, activities, onSelect
                             {ag.sessions.map((e) => (
                               <button key={e.id} onClick={() => onSelectEntry?.(e)} className="w-full flex items-center gap-3 py-1.5 text-left bg-transparent border-none cursor-pointer transition-colors">
                                 <span className="w-1 h-6 rounded-full shrink-0" style={{ background: ag.color }} />
+                                <SessionModeIcon mode={e.mode} size={14} className="text-[#b3b0bd]" />
                                 <div className="flex-1 min-w-0">
                                   <p className="text-[12px] text-[#999] truncate m-0">{e.description || 'Sin descripción'}</p>
-                                  <p className="text-[11px] text-[#b0b0b0] m-0">{fmtTime(e.startTime)} – {fmtTime(e.endTime)}</p>
+                                  <p className="text-[11px] text-[#b0b0b0] tabular-nums m-0">{fmtTime(e.startTime)} – {fmtTime(e.endTime)}</p>
                                 </div>
                                 <span className="text-[12px] font-semibold text-[#555] tabular-nums shrink-0">{formatElapsed(e.duration)}</span>
                               </button>

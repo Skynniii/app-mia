@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-export type TimerMode = 'rastreador' | 'temporizador' | 'pomodoro';
+export type TimerMode = 'rastreador' | 'temporizador' | 'pomodoro' | 'intervalos';
 
 /** Hook para cuenta atrás (temporizador y pomodoro). */
 export function useCountdownTimer() {
@@ -54,6 +54,12 @@ export function useCountdownTimer() {
     setRunning(false);
   }, []);
 
+  /** Suma (o resta) segundos a la cuenta en marcha, sin reiniciarla. */
+  const addTime = useCallback((seconds: number) => {
+    setTargetSeconds((t) => Math.max(1, t + seconds));
+    setRemaining((r) => Math.max(0, r + seconds));
+  }, []);
+
   return {
     targetSeconds,
     remaining,
@@ -63,6 +69,7 @@ export function useCountdownTimer() {
     resume,
     reset,
     setTarget,
+    addTime,
     setOnComplete,
   };
 }

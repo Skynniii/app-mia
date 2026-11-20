@@ -5,6 +5,7 @@ import { useFirestoreCollection, incrementTaskTime } from './useFirestoreCollect
 import { useUserStorage } from './useUserStorage';
 import { saveRunningSession } from '../shared/runningSession';
 import type { Activity, TimeSession, TimerMode } from '../types';
+import { formatClockDate } from '../utils/timeFormat';
 
 /** Estado del contador en curso. startedAt === null significa pausado. */
 export interface RunningTimer {
@@ -52,7 +53,7 @@ export function formatElapsed(totalSeconds: number): string {
 }
 
 export function formatClock(time: number | string, timeFormat: '12h' | '24h' = '24h'): string {
-  return new Date(time).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: timeFormat === '12h' });
+  return formatClockDate(time, timeFormat);
 }
 
 export function dayLabel(dateKey: string): string {

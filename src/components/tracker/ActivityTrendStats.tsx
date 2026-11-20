@@ -120,7 +120,7 @@ export function ActivityTrendStats({ sessions, activity }: Props) {
 
       {/* Gráfico Progreso */}
       <div className="bg-white p-4 rounded-[16px] shadow-[4px_4px_10px_#e6e6e6,-4px_-4px_10px_#ffffff]">
-        <p className="text-[12px] font-semibold text-[#999] uppercase tracking-wide m-0 mb-3">Progreso</p>
+        <p className="eyebrow m-0 mb-3">Progreso</p>
         <div className="flex" style={{ height: '150px' }}>
           {/* Eje Y */}
           <div className="flex flex-col justify-between pr-2 text-[9px] text-[#aaa] tabular-nums items-end" style={{ height: '100%' }}>

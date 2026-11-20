@@ -59,12 +59,20 @@ export function TareasDashboard({ onMenuClick, onOpenAccount, onNavigate }: Prop
     if (!lists.find((l) => l.id === activeListId)) setActiveListId(lists[0]?.id || '');
   }, [lists, activeListId]);
 
-  // Las tareas-actividad abren el Timer con esa actividad ya cargada.
+  // Las tareas-actividad abren el Timer con esa actividad ya cargada. Un avance
+  // abre el Timer con su tarea original y queda referenciado para marcarse al
+  // completar la sesión.
   const handleStartActivityTask = useCallback((task: Task) => {
-    const listActivityId = lists.find((l) => l.id === task.listId)?.activityId;
-    setPendingTimerTask(task.activityId ? task : { ...task, activityId: listActivityId });
+    if (task.linkedTaskId) {
+      const original = tasks.find((t) => t.id === task.linkedTaskId);
+      if (!original) return;
+      setPendingTimerTask(original, task.id);
+    } else {
+      const listActivityId = lists.find((l) => l.id === task.listId)?.activityId;
+      setPendingTimerTask(task.activityId ? task : { ...task, activityId: listActivityId });
+    }
     onNavigate?.('cronometro');
-  }, [lists, onNavigate]);
+  }, [lists, tasks, onNavigate]);
 
   // La sección espera a que listas, tareas y actividades estén cargadas
   // (lectura local instantánea) para aparecer completa: así las tareas-actividad

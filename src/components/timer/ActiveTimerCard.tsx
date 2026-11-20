@@ -14,6 +14,7 @@ export interface CountdownApi {
   resume: () => void;
   reset: () => void;
   setTarget: (minutes: number) => void;
+  addTime: (seconds: number) => void;
   setOnComplete: (fn: () => void) => void;
 }
 
@@ -35,9 +36,13 @@ export interface ActiveTimerCardProps {
   onCreateActivity: (name: string, color: string) => string;
   // Countdown / Pomodoro
   countdown: CountdownApi;
-  pomodoroPhase: 'work' | 'break';
+  pomodoroPhase: 'work' | 'break' | 'longBreak';
   pomodoroCycle: number;
   onPomodoroSkip: () => void;
+  // Intervalos
+  intervalRun?: { name: string; stepIndex: number; stepsTotal: number; stepName: string; stepMinutes: number[] } | null;
+  onStartInterval: (interval: import('../../hooks/useTimerSettings').CustomInterval) => void;
+  onIntervalSkip: () => void;
 }
 
 /* ---------- sub-componentes ---------- */

@@ -7,18 +7,24 @@ import type { TimerMode } from '../../hooks/useCountdownTimer';
 import type { ActiveTimerCardProps } from './ActiveTimerCard';
 import { ActivityPicker } from './ActivityPicker';
 import { FocusRing } from './FocusRing';
+import { FocusModeScreen } from './FocusModeScreen';
+import { SessionModeIcon } from './SessionModeIcon';
 import { TaskPicker } from './TaskPicker';
-import { CustomDurationModal } from './CustomDurationModal';
+import { WheelPicker } from './CustomDurationModal';
+import { TimerSettingsScreen } from './TimerSettingsScreen';
+import { useTimerSettings, recentDurationsOf, type CustomInterval } from '../../hooks/useTimerSettings';
+import { IntervalFormModal } from './IntervalFormModal';
+import { formatHHMM, formatClockDate } from '../../utils/timeFormat';
 import { DatePickerModal } from '../tareas/DatePickerModal';
 import { clampNotes, limitBeforeInput } from '../../utils/notesLimit';
 import { sheetTransition } from '../../utils/motion';
 import { TimePickerModal } from '../tareas/TimePickerModal';
 import { useSettings } from '../../context/SettingsContext';
-import { useUserStorage } from '../../hooks/useUserStorage';
 import { hapticMedium, hapticHeavy } from '../../utils/haptic';
+import { primeAlarmAudio } from '../../utils/alarm';
 
 import { BackButton, DETAIL_HEADER_TOP } from '../ui/DetailScreen';
-import type { Task, TaskList } from '../../types';
+import type { Task, TaskList, TimerMode as AppTimerMode } from '../../types';
 
 interface Props extends ActiveTimerCardProps {
   onBack: () => void;
@@ -36,17 +42,26 @@ const MODE_LABELS: Record<TimerMode, string> = {
   rastreador: 'Rastreador',
   temporizador: 'Temporizador',
   pomodoro: 'Pomodoro',
+  intervalos: 'Intervalos',
+};
+
+/** Modo con el que se guarda la sesión, para el ícono de cada modo. */
+const MODE_SESSION: Record<TimerMode, AppTimerMode> = {
+  rastreador: 'stopwatch',
+  temporizador: 'timer',
+  pomodoro: 'pomodoro',
+  intervalos: 'interval',
 };
 
 export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard, onSaveSession, onSaveManualSession, onSyncTaskNotes, ...props }: Props) {
   useBackHandler(true, onBack);
   const keyboardVisible = useKeyboardVisible();
-  const { mode, onModeChange, countdown, pomodoroPhase, pomodoroCycle, onPomodoroSkip } = props;
-  const { settings, update } = useSettings();
+  const { mode, onModeChange, countdown, pomodoroPhase, pomodoroCycle, onPomodoroSkip, intervalRun, onStartInterval, onIntervalSkip } = props;
+  const { settings } = useSettings();
+  const { timerSettings, updateTimerSettings } = useTimerSettings();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [modeDropdownOpen, setModeDropdownOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -82,8 +97,10 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
   const [holdProgress, setHoldProgress] = useState(0);
   const holdIntervalRef = useRef<number | null>(null);
   const isHoldingRef = useRef(false);
-  const [customDurations, setCustomDurations] = useUserStorage<number[]>('timer-custom-durations', [25, 45, 60]);
-  const [showCustomDuration, setShowCustomDuration] = useState(false);
+  const [timerSettingsOpen, setTimerSettingsOpen] = useState(false);
+  const [intervalModalOpen, setIntervalModalOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<'pomodoro' | undefined>(undefined);
+  const [focusMode, setFocusMode] = useState(false);
   const notesRef = useRef<HTMLDivElement>(null);
   const [notesExpanded, setNotesExpanded] = useState(false);
   const wasNotesExpanded = useRef(false);
@@ -99,43 +116,78 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
     return `${m} min`;
   };
 
+  // Selector de duración del temporizador (horas + minutos) y duraciones recientes.
+  const recentDurations = recentDurationsOf(timerSettings);
+  const durationHours = Math.floor(countdown.targetSeconds / 3600);
+  const durationMinutes = Math.floor((countdown.targetSeconds % 3600) / 60);
+  const setDuration = (totalMin: number) => countdown.setTarget(Math.min(23 * 60 + 59, Math.max(1, totalMin)));
+  const isPhaseMode = mode === 'pomodoro' || mode === 'intervalos';
+  const pomodoroPhaseLabel = pomodoroPhase === 'work' ? 'Trabajo' : pomodoroPhase === 'longBreak' ? 'Descanso largo' : 'Descanso';
+
   const activity = props.activities.find((a) => a.id === props.draft.activityId);
   const isPaused = props.running !== null && props.running.startedAt === null;
   const isTicking = props.running !== null && props.running.startedAt !== null;
 
-  const hasStarted = mode === 'rastreador' ? props.running !== null : countdown.remaining < countdown.targetSeconds;
+  const hasStarted = mode === 'rastreador'
+    ? props.running !== null
+    : mode === 'pomodoro'
+      // Con el inicio automático apagado el pomodoro sigue activo aunque el
+      // contador esté parado esperando la siguiente sesión.
+      ? (pomodoroCycle > 0 || countdown.running || countdown.remaining < countdown.targetSeconds)
+      : countdown.remaining < countdown.targetSeconds;
   const isRunning = mode === 'rastreador' ? isTicking : countdown.running;
   const isActive = isRunning;
 
   const activityColor = activity?.color ?? '#7f70ff';
-  // El temporizador se llena al iniciar (0→1); al pausar se mantiene lleno y al reiniciar vuelve a 0.
-  const timerFilled = isRunning || countdown.remaining < countdown.targetSeconds;
-  const progress = mode === 'pomodoro'
-    ? (countdown.targetSeconds > 0 ? countdown.remaining / countdown.targetSeconds : 0)
-    : mode === 'temporizador'
-      ? (timerFilled ? 1 : 0)
-      : (hasStarted ? 1 : 0);
-  const ringColor = mode === 'pomodoro' ? (pomodoroPhase === 'work' ? '#7f70ff' : '#34c77b') : activityColor;
+  // El anillo se llena al empezar y se va vaciando con la cuenta atrás.
+  const progress = mode === 'rastreador'
+    ? (hasStarted ? 1 : 0)
+    : (countdown.targetSeconds > 0 ? countdown.remaining / countdown.targetSeconds : 0);
+  const ringColor = mode === 'pomodoro'
+    ? (pomodoroPhase === 'work' ? '#7f70ff' : '#34c77b')
+    : mode === 'intervalos'
+      ? '#7f70ff'
+      : activityColor;
+  // En concentración el anillo toma el color de la actividad cuando hay una.
+  const focusColor = activity?.color ?? ringColor;
+  // Barritas de las fases en curso (pomodoro e intervalos).
+  const focusBars = mode === 'pomodoro'
+    ? {
+        weights: Array.from({ length: Math.max(1, timerSettings.pomodoroLongBreakEvery) }, () => 1),
+        active: pomodoroCycle,
+        activeProgress: 1 - progress,
+      }
+    : mode === 'intervalos' && intervalRun
+      ? { weights: intervalRun.stepMinutes, active: intervalRun.stepIndex, activeProgress: 1 - progress }
+      : null;
   // Haz de luz que recorre el anillo mientras hay una sesión activa
   const ringShimmer = isActive;
   const elapsedCount = manualMode ? manualDurationSec : (mode === 'rastreador' ? props.elapsed : (countdown.targetSeconds - countdown.remaining));
-  const timeDisplay = manualMode ? formatElapsed(manualDurationSec) : (mode === 'temporizador' ? formatElapsed(countdown.remaining) : formatElapsed(elapsedCount));
+  const timeDisplay = manualMode
+    ? formatElapsed(manualDurationSec)
+    : (mode === 'temporizador' || mode === 'intervalos' ? formatElapsed(countdown.remaining) : formatElapsed(elapsedCount));
 
   // Hora "HH:mm" (24h) mostrada según el formato elegido en ajustes (12h / 24h)
-  const fmtManualTime = (hhmm: string) => {
-    const [h, m] = hhmm.split(':').map(Number);
-    if (settings.timeFormat === '12h') return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  const fmtManualTime = (hhmm: string) => formatHHMM(hhmm, settings.timeFormat);
+
+  // Guarda un intervalo creado desde la propia vista de intervalos.
+  const saveInterval = (iv: CustomInterval) => {
+    updateTimerSettings('intervals', [...timerSettings.intervals.filter((i) => i.id !== iv.id), iv]);
+  };
+
+  // Si el usuario lo activó en la configuración, empezar abre el modo concentración.
+  const enterFocusIfNeeded = () => {
+    if (timerSettings.startInFocusMode) setFocusMode(true);
   };
 
   const handleCenterButton = () => {
     hapticMedium();
     if (mode === 'rastreador') {
-      if (!hasStarted) props.onStart();
+      if (!hasStarted) { props.onStart(); enterFocusIfNeeded(); }
       else if (isTicking) props.onPause();
       else props.onResume();
     } else {
-      if (!hasStarted) countdown.start();
+      if (!hasStarted) { primeAlarmAudio(); countdown.start(); enterFocusIfNeeded(); }
       else if (countdown.running) countdown.pause();
       else countdown.start();
     }
@@ -165,12 +217,10 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
     onSaveManualSession?.(startMs, endMs);
   };
 
-  const handleCustomDuration = (hours: number, minutes: number) => {
-    const totalMin = hours * 60 + minutes;
-    if (totalMin > 0) {
-      setCustomDurations((prev) => [totalMin, ...prev.filter((m) => m !== totalMin)].slice(0, 3));
-      countdown.setTarget(totalMin);
-    }
+  const handleSkipPhase = () => {
+    hapticMedium();
+    if (mode === 'pomodoro') onPomodoroSkip();
+    else if (mode === 'intervalos') onIntervalSkip();
   };
 
   // --- Long press checkmark ---
@@ -275,9 +325,12 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
               <>
                 <div className="fixed inset-0 z-[100]" onClick={() => setModeDropdownOpen(false)} />
                 <motion.div initial={{ opacity: 0, y: -8, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.95 }} transition={{ duration: 0.15 }} className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.15)] border border-[#f0f0f0] py-1 w-[180px] z-[101]">
-                  {(['rastreador', 'temporizador', 'pomodoro'] as TimerMode[]).map((m) => (
+                  {(['rastreador', 'temporizador', 'pomodoro', 'intervalos'] as TimerMode[]).map((m) => (
                     <button key={m} onClick={() => { onModeChange(m); setModeDropdownOpen(false); }} className={`w-full flex items-center justify-between px-4 py-2.5 text-[15px] border-none cursor-pointer transition-colors ${m === mode ? 'text-[#7f70ff] font-bold bg-[#f0edff]' : 'text-[#555] hover:bg-[#f8f9fa]'}`}>
-                      {MODE_LABELS[m]}
+                      <span className="flex items-center gap-2.5">
+                        <SessionModeIcon mode={MODE_SESSION[m]} size={16} />
+                        {MODE_LABELS[m]}
+                      </span>
                       {m === mode && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7f70ff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
                     </button>
                   ))}
@@ -286,90 +339,151 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
             )}
           </AnimatePresence>
         </div>
-        <div className="relative">
-          <button onClick={() => setSettingsOpen(!settingsOpen)} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors active:scale-90">
+        <div className="flex items-center gap-1">
+          {hasStarted && (
+            <button onClick={() => setFocusMode(true)} title="Modo concentración" className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors active:scale-90">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" /></svg>
+            </button>
+          )}
+          <button onClick={() => setTimerSettingsOpen(true)} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors active:scale-90">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
           </button>
-          <AnimatePresence>
-            {settingsOpen && (
-              <>
-                <div className="fixed inset-0 z-[100]" onClick={() => setSettingsOpen(false)} />
-                <motion.div initial={{ opacity: 0, y: -8, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.95 }} transition={{ duration: 0.15 }} className="absolute top-full right-0 mt-1 bg-white rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.15)] border border-[#f0f0f0] py-2 w-[220px] z-[101]">
-                  {mode === 'pomodoro' && (
-                    <>
-                      <button onClick={() => { onPomodoroSkip(); setSettingsOpen(false); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-[14px] text-[#555] hover:bg-[#f8f9fa] transition-colors border-none bg-transparent cursor-pointer">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 4 15 12 5 20 5 4" /><line x1="19" y1="5" x2="19" y2="19" /></svg>
-                        Saltar fase
-                      </button>
-                      <div className="h-px bg-[#f0f0f0] mx-4 my-1" />
-                    </>
-                  )}
-                  <p className="px-4 py-1 text-[11px] font-bold uppercase tracking-wide text-[#999] m-0">Configuración</p>
-                  {[{ key: 'sounds' as const, label: 'Sonidos' }, { key: 'notifications' as const, label: 'Notificaciones' }].map((item) => (
-                    <button key={item.key} onClick={() => update(item.key, !settings[item.key])} className="w-full flex items-center justify-between px-4 py-2.5 text-[14px] text-[#555] hover:bg-[#f8f9fa] transition-colors border-none bg-transparent cursor-pointer">
-                      <span>{item.label}</span>
-                      <span className={`w-9 h-5 rounded-full transition-colors ${settings[item.key] ? 'bg-[#7f70ff]' : 'bg-[#e0e0e0]'}`}>
-                        <span className={`block w-4 h-4 bg-white rounded-full shadow-sm transition-transform mt-0.5 ${settings[item.key] ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                      </span>
-                    </button>
-                  ))}
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
         </div>
       </div>
 
       {/* === Contenido scrolleable === */}
       <div className="flex-1 overflow-y-auto no-scrollbar px-5">
         {/* Anillo */}
-        <div className="flex flex-col items-center pt-4 pb-8">
-          <div className="relative flex items-center justify-center">
-            <div className="absolute w-[260px] h-[260px] rounded-full bg-[#7f70ff]/5 blur-[50px] anim-glow-pulse" />
-            <FocusRing progress={progress} color={ringColor} size={200} stroke={7} trackColor="#e8e6f0" shimmer={ringShimmer}>
-              <div className="relative flex items-center justify-center">
-                {isActive && <span className="absolute left-1/2 -translate-x-1/2 w-2 h-2 rounded-full anim-dot-pulse" style={{ background: activityColor, bottom: 'calc(100% + 8px)' }} />}
-                <span key={timeDisplay} className="text-[36px] font-bold text-[#333] tabular-nums tracking-tight leading-none">{timeDisplay}</span>
+        <motion.div layout transition={{ layout: { duration: 0.3, ease: [0.4, 0, 0.2, 1] } }} className="flex flex-col items-center pt-4 pb-6">
+          <AnimatePresence mode="wait" initial={false}>
+          {mode === 'temporizador' && !hasStarted ? (
+            /* Selector de duración: horas y minutos, sin el anillo */
+            <motion.div key="setup" initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} transition={{ duration: 0.22, ease: 'easeOut' }} className="w-full flex flex-col items-center">
+              <div className="flex items-start justify-center gap-2">
+                <div className="flex flex-col items-center gap-1">
+                  <span className="eyebrow">Horas</span>
+                  <WheelPicker variant="flat" value={durationHours} min={0} max={23} onChange={(h) => setDuration(h * 60 + durationMinutes)} />
+                </div>
+                <span className="text-[26px] font-bold text-[#ccc] pt-[52px]">:</span>
+                <div className="flex flex-col items-center gap-1">
+                  <span className="eyebrow">Minutos</span>
+                  <WheelPicker variant="flat" value={durationMinutes} min={0} max={59} onChange={(m) => setDuration(durationHours * 60 + m)} />
+                </div>
               </div>
-            </FocusRing>
-          </div>
 
-          {mode === 'pomodoro' && (
-            <div className="flex items-center gap-2 mt-3">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ background: pomodoroPhase === 'work' ? '#7f70ff' : '#34c77b' }} />
-              <span className="text-[13px] font-bold uppercase tracking-wide" style={{ color: pomodoroPhase === 'work' ? '#7f70ff' : '#34c77b' }}>{pomodoroPhase === 'work' ? 'Trabajo' : 'Descanso'}</span>
-              <span className="text-[11px] text-[#b0b0b0]">· Ciclo {pomodoroCycle}</span>
-            </div>
-          )}
-
-          {/* Botones de ajuste rápido (modo manual) */}
-          {manualMode && (
-            <div className="flex gap-2 mt-4">
-              {[{ label: '-10', val: -10 }, { label: '-5', val: -5 }, { label: '+5', val: 5 }, { label: '+10', val: 10 }].map((b) => (
-                <button key={b.label} onClick={() => adjustManualEnd(b.val)} className={`px-4 py-2.5 rounded-2xl text-[15px] font-bold bg-[#f7f6f9] border-none cursor-pointer active:scale-95 transition-transform ${b.val < 0 ? 'text-[#333]' : 'text-[#7f70ff]'}`}>
-                  {b.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Presets de temporizador */}
-          {mode === 'temporizador' && (
-            <div className="flex gap-2 mt-4 flex-wrap justify-center max-w-[320px]">
-              {customDurations
-                .filter((min) => !hasStarted || countdown.targetSeconds === min * 60)
-                .map((min) => (
-                  <button key={min} onClick={() => countdown.setTarget(min)} className={`px-3.5 py-1.5 rounded-full text-[13px] font-semibold border-none cursor-pointer transition-colors ${countdown.targetSeconds === min * 60 ? 'bg-[#7f70ff] text-white shadow-[2px_4px_10px_rgba(127,112,255,0.2)]' : 'bg-[#f7f6f9] text-[#777] shadow-[inset_2px_2px_5px_#e6e6e6,inset_-2px_-2px_5px_#ffffff]'}`}>{formatDurationLabel(min)}</button>
+              {/* Duraciones recientes */}
+              <div className="flex gap-2 mt-5 flex-wrap justify-center max-w-[320px]">
+                {recentDurations.map((min) => (
+                  <button key={min} onClick={() => setDuration(min)} className={`px-3.5 py-1.5 rounded-full text-[13px] font-semibold border-none cursor-pointer transition-colors ${Math.round(countdown.targetSeconds / 60) === min ? 'bg-[#7f70ff] text-white shadow-[2px_4px_10px_rgba(127,112,255,0.2)]' : 'bg-[#f7f6f9] text-[#777]'}`}>{formatDurationLabel(min)}</button>
                 ))}
-              {!hasStarted && (
-                <button onClick={() => setShowCustomDuration(true)} className="px-3.5 py-1.5 rounded-full text-[13px] font-semibold bg-[#f7f6f9] text-[#777] shadow-[inset_2px_2px_5px_#e6e6e6,inset_-2px_-2px_5px_#ffffff] border-none cursor-pointer transition-colors">Personalizado</button>
+              </div>
+            </motion.div>
+          ) : mode === 'intervalos' && !hasStarted ? (
+            /* Intervalos propios del usuario */
+            <motion.div key="intervals" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} transition={{ duration: 0.22, ease: 'easeOut' }} className="w-full max-w-[340px]">
+              {timerSettings.intervals.length === 0 ? (
+                <p className="text-[14px] text-[#8b8b98] text-center m-0 py-6">Todavía no tienes intervalos. Crea uno y aparecerá aquí.</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {timerSettings.intervals.map((iv) => (
+                    <button key={iv.id} onClick={() => { primeAlarmAudio(); onStartInterval(iv); enterFocusIfNeeded(); }} className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-[#f7f6f9] border-none cursor-pointer text-left active:scale-[0.99] transition-transform">
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-[15px] font-semibold text-[#333] truncate">{iv.name}</span>
+                        <span className="block text-[12px] text-[#8b8b98] mt-0.5">{formatDurationLabel(iv.steps.reduce((sum, st) => sum + st.minutes, 0))} · {iv.steps.length} {iv.steps.length === 1 ? 'intervalo' : 'intervalos'}</span>
+                      </span>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="#7f70ff"><path d="M8 5v14l11-7z" /></svg>
+                    </button>
+                  ))}
+                </div>
               )}
+              {/* Con al menos un intervalo, crear otro solo desde configuración */}
+              {timerSettings.intervals.length === 0 && (
+                <button onClick={() => setIntervalModalOpen(true)} className="mt-3 w-full py-3 rounded-2xl border border-dashed border-[#7f70ff] bg-transparent text-[14px] font-semibold text-[#7f70ff] cursor-pointer">+ Nuevo intervalo</button>
+              )}
+            </motion.div>
+          ) : (
+            <motion.div key="clock" initial={{ opacity: 0, scale: 0.82 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} transition={{ type: 'spring', stiffness: 240, damping: 26 }} className="flex flex-col items-center w-full">
+              <div className="relative flex items-center justify-center">
+                <div className="absolute w-[260px] h-[260px] rounded-full bg-[#7f70ff]/5 blur-[50px] anim-glow-pulse" />
+                <FocusRing progress={progress} color={ringColor} size={200} stroke={7} trackColor="#e8e6f0" shimmer={ringShimmer}>
+                  <div className="relative flex items-center justify-center">
+                    {isActive && <span className="absolute left-1/2 -translate-x-1/2 w-2 h-2 rounded-full anim-dot-pulse" style={{ background: activityColor, bottom: 'calc(100% + 8px)' }} />}
+                    <span key={timeDisplay} className="text-[36px] font-bold text-[#333] tabular-nums tracking-tight leading-none">{timeDisplay}</span>
+                  </div>
+                </FocusRing>
+              </div>
+
+              {/* Sumar o restar tiempo: solo con el temporizador ya en marcha */}
+              {mode === 'temporizador' && hasStarted && (
+                <div className="flex items-center gap-3 mt-5">
+                  <button
+                    onClick={() => countdown.addTime(-timerSettings.timerAdjustMinutes * 60)}
+                    aria-label="Quitar tiempo"
+                    className="w-12 h-12 rounded-full bg-[#f4f2fa] border-none cursor-pointer flex items-center justify-center active:scale-90 transition-transform"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#777" strokeWidth="2.6" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                  </button>
+                  <button
+                    onClick={() => countdown.addTime(timerSettings.timerAdjustMinutes * 60)}
+                    aria-label="Añadir tiempo"
+                    className="w-12 h-12 rounded-full bg-[#7f70ff] border-none cursor-pointer flex items-center justify-center active:scale-90 transition-transform shadow-[0_4px_12px_rgba(127,112,255,0.28)]"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                  </button>
+                </div>
+              )}
+
+              {mode === 'pomodoro' && (
+                <div className="flex items-center gap-2 mt-3">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: pomodoroPhase === 'work' ? '#7f70ff' : '#34c77b' }} />
+                  <span className="text-[13px] font-bold uppercase tracking-wide" style={{ color: pomodoroPhase === 'work' ? '#7f70ff' : '#34c77b' }}>{pomodoroPhaseLabel}</span>
+                  <span className="text-[11px] text-[#b0b0b0]">· Ciclo {pomodoroCycle}</span>
+                </div>
+              )}
+
+              {mode === 'intervalos' && intervalRun && (
+                <div className="flex items-center gap-2 mt-3">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: '#7f70ff' }} />
+                  <span className="text-[13px] font-bold uppercase tracking-wide" style={{ color: '#7f70ff' }}>
+                    {intervalRun.stepName} {intervalRun.stepIndex + 1}/{intervalRun.stepsTotal}
+                  </span>
+                  <span className="text-[11px] text-[#b0b0b0] truncate max-w-[120px]">· {intervalRun.name}</span>
+                </div>
+              )}
+
+              {/* Botones de ajuste rápido (modo manual) */}
+              {manualMode && (
+                <div className="flex gap-2 mt-4">
+                  {[{ label: '-10', val: -10 }, { label: '-5', val: -5 }, { label: '+5', val: 5 }, { label: '+10', val: 10 }].map((b) => (
+                    <button key={b.label} onClick={() => adjustManualEnd(b.val)} className={`px-4 py-2.5 rounded-2xl text-[15px] font-bold bg-[#f7f6f9] border-none cursor-pointer active:scale-95 transition-transform ${b.val < 0 ? 'text-[#333]' : 'text-[#7f70ff]'}`}>
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+          </AnimatePresence>
+
+          {/* Resumen del pomodoro + acceso a su configuración */}
+          {mode === 'pomodoro' && (
+            <div className="flex flex-col items-center gap-2 mt-5">
+              <p className="m-0 text-[13px] text-[#8b8b98] tabular-nums">
+                {timerSettings.pomodoroFocus} min · {timerSettings.pomodoroBreak} min · {timerSettings.pomodoroLongBreak} min · {pomodoroCycle}/{timerSettings.pomodoroLongBreakEvery}
+              </p>
+              <button
+                onClick={() => { setSettingsSection('pomodoro'); setTimerSettingsOpen(true); }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-[#f7f6f9] border-none cursor-pointer text-[13px] font-semibold text-[#7f70ff] active:scale-95 transition-transform"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+                Configurar pomodoro
+              </button>
             </div>
           )}
-        </div>
+        </motion.div>
 
         {/* Información de la sesión */}
-        <div className="max-w-[340px] mx-auto pb-28">
+        <motion.div layout transition={{ layout: { duration: 0.3, ease: [0.4, 0, 0.2, 1] } }} className="max-w-[340px] mx-auto pb-44">
           {/* Header con "Tasks" a la derecha */}
           <div className="flex items-center justify-between mb-1">
             <p className="text-[12px] font-bold uppercase tracking-wide text-[#999] m-0">Información de la sesión</p>
@@ -390,16 +504,16 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
                 transition={{ height: { duration: 0.3, ease: [0.4, 0, 0.2, 1] }, opacity: { duration: 0.25, ease: 'easeInOut' } }}
                 className="overflow-hidden border-b border-[#f0f0f5]"
               >
-              <div className="flex items-center gap-3 py-3">
-                <span className="text-[#a0a0a0]">
+              <div className="flex min-w-0 items-center gap-3 py-3">
+                <span className="text-[#a0a0a0] shrink-0">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
                 </span>
                 {manualMode ? (
-                  <button onClick={() => setShowDatePicker(true)} className="text-[15px] font-medium text-[#333] capitalize bg-transparent border-none cursor-pointer">
+                  <button onClick={() => setShowDatePicker(true)} className="min-w-0 truncate text-left text-[15px] font-medium text-[#333] capitalize bg-transparent border-none cursor-pointer">
                     {new Date(manualDate + 'T00:00:00').toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' })}
                   </button>
                 ) : (
-                  <button onClick={() => setShowDatePicker(true)} className="text-[15px] font-medium text-[#333] capitalize bg-transparent border-none cursor-pointer">
+                  <button onClick={() => setShowDatePicker(true)} className="min-w-0 truncate text-left text-[15px] font-medium text-[#333] capitalize bg-transparent border-none cursor-pointer">
                     {(() => {
                       const ms = mode === 'rastreador' && props.running ? props.running.sessionStart : Date.now() - elapsedCount * 1000;
                       return new Date(ms).toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -409,24 +523,20 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
                 <div className="flex-1" />
                 {manualMode ? (
                   <div className="flex items-center gap-2">
-                    <button onClick={() => setShowStartTimePicker(true)} className="text-[15px] font-medium text-[#333] tabular-nums bg-transparent border-none cursor-pointer">{fmtManualTime(manualStart)}</button>
+                    <button onClick={() => setShowStartTimePicker(true)} className="shrink-0 whitespace-nowrap text-[15px] font-medium text-[#333] tabular-nums bg-transparent border-none cursor-pointer">{fmtManualTime(manualStart)}</button>
                     <span className="text-[#bbb]">–</span>
-                    <button onClick={() => setShowEndTimePicker(true)} className="text-[15px] font-medium text-[#333] tabular-nums bg-transparent border-none cursor-pointer">{fmtManualTime(manualEnd)}</button>
+                    <button onClick={() => setShowEndTimePicker(true)} className="shrink-0 whitespace-nowrap text-[15px] font-medium text-[#333] tabular-nums bg-transparent border-none cursor-pointer">{fmtManualTime(manualEnd)}</button>
                   </div>
                 ) : (
-                  <button onClick={() => setShowStartTimePicker(true)} className="text-[15px] font-medium text-[#333] tabular-nums bg-transparent border-none cursor-pointer">
+                  <button onClick={() => setShowStartTimePicker(true)} className="shrink-0 whitespace-nowrap text-[15px] font-medium text-[#333] tabular-nums bg-transparent border-none cursor-pointer">
                     {(() => {
-                      const is12h = settings.timeFormat !== '24h';
                       if (mode === 'rastreador') {
                         if (!props.running) return '--:--';
-                        const startMs = props.running.sessionStart;
-                        return new Date(startMs).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: is12h });
+                        return formatClockDate(props.running.sessionStart, settings.timeFormat);
                       }
                       const now = Date.now();
-                      const startMs = now - elapsedCount * 1000;
-                      const endMs = now + countdown.remaining * 1000;
-                      const startStr = new Date(startMs).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: is12h });
-                      const endStr = new Date(endMs).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: is12h });
+                      const startStr = formatClockDate(now - elapsedCount * 1000, settings.timeFormat);
+                      const endStr = formatClockDate(now + countdown.remaining * 1000, settings.timeFormat);
                       return `${startStr} – ${endStr}`;
                     })()}
                   </button>
@@ -487,21 +597,22 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
               )}
             </AnimatePresence>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* === Botones flotantes inferiores (ocultos con el teclado abierto) === */}
-      <div className={`flex items-center justify-center gap-10 pt-2 shrink-0 ${keyboardVisible ? 'hidden' : ''}`} style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 32px)' }}>
-        {manualMode ? (
-          <button onClick={() => setManualMode(false)} className="w-[52px] h-[52px] rounded-full bg-white border-none cursor-pointer flex items-center justify-center shadow-[4px_4px_10px_#e6e6e6,-4px_-4px_10px_#ffffff] active:shadow-[inset_2px_2px_5px_#e6e6e6,inset_-2px_-2px_5px_#ffffff] active:scale-[0.88] transition-all">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ff6b81" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-          </button>
-        ) : hasStarted ? (
-          <button onClick={handleXClick} className="w-[52px] h-[52px] rounded-full bg-white border-none cursor-pointer flex items-center justify-center shadow-[4px_4px_10px_#e6e6e6,-4px_-4px_10px_#ffffff] active:shadow-[inset_2px_2px_5px_#e6e6e6,inset_-2px_-2px_5px_#ffffff] active:scale-[0.88] transition-all">
+      <div className={`pointer-events-none absolute inset-x-0 bottom-0 z-30 ${keyboardVisible ? 'hidden' : ''}`}>
+        {/* Velo suave: los botones flotan sobre el contenido sin una franja sólida */}
+        <div className="absolute inset-x-0 bottom-0 h-[150px] bg-gradient-to-t from-white via-white/85 to-transparent" />
+        <div className={`relative flex items-center justify-center pt-8 pointer-events-auto ${isPhaseMode && hasStarted ? 'gap-4' : 'gap-10'}`} style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 28px)' }}>
+        {/* Cancelar */}
+        {manualMode || hasStarted ? (
+          <button onClick={() => (manualMode ? setManualMode(false) : handleXClick())} className="w-[52px] h-[52px] rounded-full bg-white border-none cursor-pointer flex items-center justify-center shadow-[4px_4px_10px_#e6e6e6,-4px_-4px_10px_#ffffff] active:shadow-[inset_2px_2px_5px_#e6e6e6,inset_-2px_-2px_5px_#ffffff] active:scale-[0.88] transition-all">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ff6b81" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
         ) : <div className="w-[52px]" />}
 
+        {/* Iniciar / pausar / reanudar (guardar en modo manual) */}
         <button onClick={manualMode ? handleSaveManual : handleCenterButton} className="w-[68px] h-[68px] rounded-full bg-gradient-to-br from-[#7f70ff] to-[#9d8aff] border-none cursor-pointer flex items-center justify-center shadow-[0_6px_16px_rgba(127,112,255,0.35)] active:scale-[0.88] transition-transform">
           {manualMode ? (
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
@@ -512,8 +623,16 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
           )}
         </button>
 
+        {/* Saltar / siguiente: pomodoro e intervalos en curso */}
+        {isPhaseMode && hasStarted && (
+          <button onClick={handleSkipPhase} title="Saltar a la siguiente fase" className="w-[52px] h-[52px] rounded-full bg-white border-none cursor-pointer flex items-center justify-center shadow-[4px_4px_10px_#e6e6e6,-4px_-4px_10px_#ffffff] active:shadow-[inset_2px_2px_5px_#e6e6e6,inset_-2px_-2px_5px_#ffffff] active:scale-[0.88] transition-all">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7f70ff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 4 15 12 5 20 5 4" /><line x1="19" y1="5" x2="19" y2="19" /></svg>
+          </button>
+        )}
+
+        {/* Guardar sesión (pulsación larga completa la tarea) o registro manual (solo Rastreador) */}
         {manualMode ? (
-          <div className="w-[64px]" />
+          <div className="w-[56px]" />
         ) : hasStarted ? (
           <div className="relative" style={{ width: checkSize, height: checkSize }}>
             <svg className="absolute inset-0 -rotate-90 pointer-events-none" width={checkSize} height={checkSize}>
@@ -523,7 +642,7 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34c77b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
             </button>
           </div>
-        ) : (
+        ) : mode === 'rastreador' ? (
           <button onClick={() => {
             const now = new Date();
             const start = new Date(now.getTime() - 3600000);
@@ -533,7 +652,10 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
           }} className="w-[56px] h-[56px] rounded-full bg-white border-none cursor-pointer flex items-center justify-center shadow-[4px_4px_10px_#e6e6e6,-4px_-4px_10px_#ffffff] active:shadow-[inset_2px_2px_5px_#e6e6e6,inset_-2px_-2px_5px_#ffffff] transition-shadow active:scale-[0.88] transition-transform">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7f70ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2v4" /><path d="M16 2v4" /><rect x="4" y="4" width="16" height="18" rx="2" /><path d="M12 11v5" /><path d="M9.5 13.5h5" /></svg>
           </button>
+        ) : (
+          <div className="w-[56px]" />
         )}
+        </div>
       </div>
 
       {/* Confirmación de descarte */}
@@ -605,9 +727,45 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
         />
       )}
 
+      <IntervalFormModal
+        isOpen={intervalModalOpen}
+        onClose={() => setIntervalModalOpen(false)}
+        onSave={saveInterval}
+      />
       <ActivityPicker isOpen={pickerOpen} onClose={() => setPickerOpen(false)} activities={props.activities} selectedId={props.draft.activityId} onSelect={(id) => { props.onActivityChange(id); setPickerOpen(false); }} />
       <TaskPicker isOpen={taskPickerOpen} onClose={() => setTaskPickerOpen(false)} lists={taskLists} tasks={tasks} onSelect={handleSelectTask} />
-      <CustomDurationModal isOpen={showCustomDuration} onClose={() => setShowCustomDuration(false)} onSave={handleCustomDuration} />
+      <AnimatePresence>
+        {timerSettingsOpen && (
+          <TimerSettingsScreen
+            key="timer-settings"
+            initialSection={settingsSection}
+            onBack={() => { setTimerSettingsOpen(false); setSettingsSection(undefined); }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Modo concentración: reloj y lo esencial, sin la pantalla de edición */}
+      <AnimatePresence>
+        {focusMode && hasStarted && (
+          <FocusModeScreen
+            key="focus-mode"
+            theme={timerSettings.focusTheme}
+            appearance={timerSettings.focusAppearance}
+            timeDisplay={timeDisplay}
+            progress={progress}
+            color={focusColor}
+            activityName={activity?.name ?? ''}
+            description={props.draft.description?.trim() ?? ''}
+            isRunning={isRunning}
+            keepScreenOn={timerSettings.keepScreenOn}
+            bars={focusBars}
+            onToggle={handleCenterButton}
+            onSkip={isPhaseMode ? handleSkipPhase : undefined}
+            onFinish={() => { setFocusMode(false); onSaveSession(false, selectedTask?.id ?? props.draft.taskId); }}
+            onExit={() => setFocusMode(false)}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

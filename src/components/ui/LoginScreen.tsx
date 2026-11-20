@@ -61,7 +61,7 @@ export function LoginScreen() {
             <circle cx="256" cy="256" r="38" fill="white"/>
           </svg>
         </div>
-        <h1 className="text-[26px] font-bold text-[#1a1a2e] mb-1.5">Lumina</h1>
+        <h1 className="text-[26px] font-bold text-[#1a1a2e] tracking-[-0.03em] mb-1.5">Lumina</h1>
         <p className="text-[14px] text-[#7a7a8c] mb-8 max-w-[260px]">Tus tareas, tiempo y calendario sincronizados en la nube.</p>
 
         <button

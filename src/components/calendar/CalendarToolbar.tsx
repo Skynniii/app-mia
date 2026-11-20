@@ -57,7 +57,7 @@ export function CalendarToolbar({ mode, onCycleMode, title, onToday, onSearch, a
                 animate={{ y: '0%', opacity: 1 }}
                 exit={{ y: '-100%', opacity: 0 }}
                 transition={{ duration: 0.24, ease: 'easeOut' }}
-                className="block text-[18px] font-bold text-[#333] whitespace-nowrap leading-[24px]"
+                className="block text-[19px] font-bold text-[#1c1c23] whitespace-nowrap leading-[24px] tracking-[-0.025em]"
               >
                 {title}
               </motion.span>

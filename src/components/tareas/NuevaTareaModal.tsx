@@ -8,6 +8,7 @@ import { ActivityPicker } from '../timer/ActivityPicker';
 import { useActivities } from '../../hooks/useActivities';
 import { useSettings } from '../../context/SettingsContext';
 import { clampNotes, limitBeforeInput, plainNotesLength, NOTES_MAX_LENGTH } from '../../utils/notesLimit';
+import { formatHHMM } from '../../utils/timeFormat';
 import type { RepeatConfig, TaskList, Activity, Task } from '../../types';
 
 interface Props {
@@ -30,13 +31,7 @@ function fmtFecha(scheduledDate: string | undefined, scheduledTime: string | und
   const [, m, day] = d.split('-').map(Number);
   let s = `${day} ${MONTHS[m - 1]}`;
   if (scheduledTime) {
-    const [h, min] = scheduledTime.split(':').map(Number);
-    if (timeFormat === '12h') {
-      const h12 = h % 12 || 12;
-      s += ` · ${h12}:${String(min).padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`;
-    } else {
-      s += ` · ${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-    }
+    s += ` · ${formatHHMM(scheduledTime, timeFormat)}`;
   }
   if (repeat?.enabled) s += ' 🔁';
   return s;
@@ -108,13 +103,13 @@ export function NuevaTareaModal({ isOpen, defaultListId, availableLists, allList
     if (focusTitleAfterNotes) titleRef.current?.focus({ preventScroll: true });
   }, [notesOpen, focusTitleAfterNotes]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // El foco llega cuando el modal ya terminó de entrar: el teclado sube después
-  // y empuja el modal, en vez de aparecer a mitad de la animación.
-  useEffect(() => {
-    if (!isOpen || isLinked) return;
-    const t = window.setTimeout(() => titleRef.current?.focus({ preventScroll: true }), 240);
-    return () => window.clearTimeout(t);
-  }, [isOpen, isLinked]);
+  // El foco llega en el mismo frame en que el modal termina de entrar (ver
+  // onAnimationComplete del panel): el teclado empieza a subir justo después y lo
+  // empuja, sin una espera fija entre el final de la animación y el teclado.
+  const focusTitleOnEnter = () => {
+    if (isLinked) return;
+    titleRef.current?.focus({ preventScroll: true });
+  };
 
   // La pestaña sube con el teclado escribiendo directo en el estilo: si se
   // hiciera con estado, cada frame del teclado re-renderizaría todo el modal.
@@ -237,7 +232,8 @@ export function NuevaTareaModal({ isOpen, defaultListId, availableLists, allList
               ref={panelRef}
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
-              transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              onAnimationComplete={focusTitleOnEnter}
               className="fixed bottom-0 left-0 right-0 mx-auto w-full max-w-[420px] z-[1002] bg-white rounded-t-[28px] shadow-[0_-8px_30px_rgba(0,0,0,0.12)] px-5 pt-3 pb-6"
               // Tocar cualquier zona interior del modal cierra las notas si están vacías
               onClick={() => { if (!hasNotes) setNotesOpen(false); }}

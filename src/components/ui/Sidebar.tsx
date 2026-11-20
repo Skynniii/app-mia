@@ -63,11 +63,11 @@ export function Sidebar({ isOpen, onClose, activeView, onNavigate, onOpenSetting
                     <circle cx="256" cy="256" r="38" fill="white"/>
                   </svg>
                 </div>
-                <h2 className="text-xl font-bold text-[#2b2b2b]">Lumina</h2>
+                <h2 className="text-[19px] font-bold text-[#1c1c23] tracking-[-0.03em]">Lumina</h2>
               </div>
 
               {/* Secciones */}
-              <h3 className="text-xs font-bold text-[#999] uppercase tracking-wider mb-2 px-1">Secciones</h3>
+              <h3 className="eyebrow mb-2 px-1">Secciones</h3>
               <div className="space-y-1 mb-6">
                 {SECTIONS.map((s) => {
                   const active = activeView === s.id;
@@ -87,7 +87,7 @@ export function Sidebar({ isOpen, onClose, activeView, onNavigate, onOpenSetting
               <hr className="border-[#f0f0f0] mb-5" />
 
               {/* Configuración */}
-              <h3 className="text-xs font-bold text-[#999] uppercase tracking-wider mb-2 px-1">Configuración</h3>
+              <h3 className="eyebrow mb-2 px-1">Configuración</h3>
               <div className="space-y-1 mb-6">
                 <button
                   onClick={onOpenSettings}
@@ -104,7 +104,7 @@ export function Sidebar({ isOpen, onClose, activeView, onNavigate, onOpenSetting
               <hr className="border-[#f0f0f0] mb-5" />
 
               {/* Otras opciones */}
-              <h3 className="text-xs font-bold text-[#999] uppercase tracking-wider mb-2 px-1">Más</h3>
+              <h3 className="eyebrow mb-2 px-1">Más</h3>
               <div className="space-y-1">
                 <button className="w-full text-left px-3 py-2.5 rounded-xl text-[15px] text-[#555] hover:bg-[#f8f9fa] transition-colors">Ayuda</button>
                 <button className="w-full text-left px-3 py-2.5 rounded-xl text-[15px] text-[#555] hover:bg-[#f8f9fa] transition-colors">Acerca de</button>
