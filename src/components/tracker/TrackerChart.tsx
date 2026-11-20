@@ -10,7 +10,7 @@ export function TrackerChart({ dailyTotals }: Props) {
   const weekTotal = dailyTotals.reduce((sum, d) => sum + d.total, 0);
 
   return (
-    <div className="bg-white p-5 rounded-[24px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff]">
+    <div className="bg-white p-4 rounded-[16px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff]">
       <div className="flex items-center justify-between mb-4">
         <p className="text-[13px] font-semibold text-[#999] uppercase tracking-wide m-0">Esta semana</p>
         <span className="text-[14px] font-bold text-[#333] tabular-nums">{formatDuration(weekTotal)}</span>

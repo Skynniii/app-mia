@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { ModalNeuromorfico } from './ModalNeuromorfico';
 import { useBackHandler } from '../../hooks/useBackHandler';
+import { BackButton, DETAIL_HEADER_TOP } from './DetailScreen';
 
 function ProfileAvatar({ photoURL, name, size }: { photoURL?: string; name: string; size: number }) {
   const [error, setError] = useState(false);
@@ -49,14 +50,9 @@ export function AccountPage({ onBack, onOpenSettings }: Props) {
       className="absolute top-0 left-0 w-full h-full bg-white z-[1100] flex flex-col overflow-y-auto no-scrollbar"
     >
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-white pb-2" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-        <div className="flex items-center gap-3 px-5 pt-2">
-          <button onClick={onBack} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors active:scale-90 shrink-0">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="19" y1="12" x2="5" y2="12" />
-              <polyline points="12 19 5 12 12 5" />
-            </svg>
-          </button>
+      <div className="sticky top-0 z-10 bg-white pb-2" style={{ paddingTop: DETAIL_HEADER_TOP }}>
+        <div className="flex items-center gap-3 px-4">
+          <BackButton onClick={onBack} />
           <div>
             <h1 className="text-[#2b2b2b] font-bold text-2xl m-0">Mi cuenta</h1>
             <p className="text-[13px] text-[#999] m-0 mt-0.5">Gestiona tu perfil y preferencias</p>
@@ -64,7 +60,7 @@ export function AccountPage({ onBack, onOpenSettings }: Props) {
         </div>
       </div>
 
-      <div className="flex-1 px-5 pb-[100px]">
+      <div className="flex-1 px-4 pb-[100px]">
         {/* Perfil */}
         <div className="flex flex-col items-center mt-4 mb-6">
           <ProfileAvatar photoURL={photoURL} name={name} size={96} />

@@ -11,6 +11,7 @@ import { ActivityTrendStats } from './ActivityTrendStats';
 import { ActivityEditModal } from './ActivityEditModal';
 import type { Activity, TimeSession, Task, TaskList, ViewType } from '../../types';
 import { setPendingTimerTask } from '../../shared/pendingTimerTask';
+import { BackButton, DETAIL_HEADER_TOP } from '../ui/DetailScreen';
 
 interface Props {
   activity: Activity;
@@ -124,10 +125,8 @@ export function ActivityDetailModal({ activity, stat, sessions, tasks, lists, on
       className="fixed inset-0 z-[1500] bg-[#f7f6f9] flex flex-col"
     >
       {/* Header con lápiz de edición */}
-      <div className="flex items-center gap-3 px-5 pb-3 shrink-0" style={{ paddingTop: 'max(env(safe-area-inset-top), 20px)' }}>
-        <button onClick={onBack} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors active:scale-90 border-none bg-transparent cursor-pointer">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5" /><path d="M12 19l-7-7 7-7" /></svg>
-        </button>
+      <div className="flex items-center gap-3 px-4 pb-3 shrink-0" style={{ paddingTop: DETAIL_HEADER_TOP }}>
+        <BackButton onClick={onBack} />
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ background: activity.color }} />
           <h1 className="text-[20px] font-bold text-[#333] m-0 truncate">{activity.name}</h1>
@@ -144,7 +143,7 @@ export function ActivityDetailModal({ activity, stat, sessions, tasks, lists, on
       </div>
 
       {/* Tabs */}
-      <div className="px-5 pb-2 shrink-0">
+      <div className="px-4 pb-2 shrink-0">
         <div className="flex gap-1 bg-[#eeeaf6] rounded-full p-1">
           {TABS.map((t) => (
             <button
@@ -161,7 +160,7 @@ export function ActivityDetailModal({ activity, stat, sessions, tasks, lists, on
       </div>
 
       {/* Contenido */}
-      <div className="flex-1 overflow-y-auto no-scrollbar px-5 pb-5">
+      <div className="flex-1 overflow-y-auto no-scrollbar px-4 pb-5">
         <AnimatePresence mode="wait">
           <motion.div
             key={tab}
@@ -178,7 +177,7 @@ export function ActivityDetailModal({ activity, stat, sessions, tasks, lists, on
                 <ConsistencyGraph sessions={sessions} activity={activity} />
 
                 {/* Stats en lista */}
-                <div className="bg-white rounded-[24px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] overflow-hidden">
+                <div className="bg-white rounded-[16px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] overflow-hidden">
                   {[
                     { label: 'Tiempo total', value: formatDuration(stat.totalSeconds) },
                     { label: 'Sesiones totales', value: `${actSessions.length}` },
@@ -187,7 +186,7 @@ export function ActivityDetailModal({ activity, stat, sessions, tasks, lists, on
                     { label: 'Racha actual', value: `${allTimeStats.streak} ${allTimeStats.streak === 1 ? 'día' : 'días'}` },
                     { label: 'Mejor racha', value: `${allTimeStats.bestStreak} ${allTimeStats.bestStreak === 1 ? 'día' : 'días'}` },
                   ].map((s, i) => (
-                    <div key={i} className={`flex items-center justify-between px-5 py-3.5 ${i > 0 ? 'border-t border-[#f2f2f2]' : ''}`}>
+                    <div key={i} className={`flex items-center justify-between px-4 py-3.5 ${i > 0 ? 'border-t border-[#f2f2f2]' : ''}`}>
                       <p className="text-[15px] font-semibold text-[#333] m-0">{s.label}</p>
                       <span className="text-[13px] font-normal text-[#999] tabular-nums shrink-0">{s.value}</span>
                     </div>
@@ -204,11 +203,11 @@ export function ActivityDetailModal({ activity, stat, sessions, tasks, lists, on
                     {pendingTasks.length > 0 && (
                       <>
                         <p className="text-[12px] font-bold uppercase tracking-wider text-[#a0a0a0] m-0">Pendientes ({pendingTasks.length})</p>
-                        <div className="bg-white rounded-[24px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] overflow-hidden">
+                        <div className="bg-white rounded-[16px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] overflow-hidden">
                           {pendingTasks.map((t, i) => {
                             const taskTime = taskTimeMap.get(t.id) ?? 0;
                             return (
-                              <div key={t.id} className={`flex items-center gap-3 px-5 py-3.5 ${i > 0 ? 'border-t border-[#f2f2f2]' : ''}`}>
+                              <div key={t.id} className={`flex items-center gap-3 px-4 py-3.5 ${i > 0 ? 'border-t border-[#f2f2f2]' : ''}`}>
                                 <button
                                   onClick={() => handleResumeTask(t)}
                                   className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 border-[1.5px] border-[#d1d1d6] bg-transparent cursor-pointer transition-colors hover:border-[#7f70ff] active:scale-90"
@@ -233,11 +232,11 @@ export function ActivityDetailModal({ activity, stat, sessions, tasks, lists, on
                     {completedTasks.length > 0 && (
                       <>
                         <p className="text-[12px] font-bold uppercase tracking-wider text-[#a0a0a0] m-0">Completadas ({completedTasks.length})</p>
-                        <div className="bg-white rounded-[24px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] overflow-hidden">
+                        <div className="bg-white rounded-[16px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] overflow-hidden">
                           {completedTasks.map((t, i) => {
                             const taskTime = taskTimeMap.get(t.id) ?? 0;
                             return (
-                              <div key={t.id} className={`flex items-center gap-3 px-5 py-3.5 ${i > 0 ? 'border-t border-[#f2f2f2]' : ''}`}>
+                              <div key={t.id} className={`flex items-center gap-3 px-4 py-3.5 ${i > 0 ? 'border-t border-[#f2f2f2]' : ''}`}>
                                 <button
                                   onClick={() => handleResumeTask(t)}
                                   className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 border-[1.5px] border-[#d1d1d6] bg-transparent cursor-pointer transition-colors hover:border-[#7f70ff] active:scale-90"
@@ -279,12 +278,12 @@ export function ActivityDetailModal({ activity, stat, sessions, tasks, lists, on
                       <span className="text-[12px] font-bold uppercase tracking-wider text-[#a0a0a0]">Tiempo por tarea</span>
                       <div className="flex-1 h-px bg-[#eceaf3]" />
                     </div>
-                    <div className="bg-white rounded-[24px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] overflow-hidden">
+                    <div className="bg-white rounded-[16px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] overflow-hidden">
                       {timeByTasks.map((t, i) => {
                         const maxTaskTime = Math.max(...timeByTasks.map((x) => x.totalSeconds), 1);
                         const pct = (t.totalSeconds / maxTaskTime) * 100;
                         return (
-                          <div key={i} className={`flex items-center gap-3 px-5 py-3.5 ${i > 0 ? 'border-t border-[#f2f2f2]' : ''}`}>
+                          <div key={i} className={`flex items-center gap-3 px-4 py-3.5 ${i > 0 ? 'border-t border-[#f2f2f2]' : ''}`}>
                             <div className="flex-1 min-w-0">
                               <p className="text-[14px] font-medium text-[#333] truncate m-0">{t.taskName}</p>
                               <div className="h-1 rounded-full bg-[#f0f0f0] overflow-hidden mt-1.5">
@@ -315,9 +314,9 @@ export function ActivityDetailModal({ activity, stat, sessions, tasks, lists, on
                             <span className="text-[13px] font-bold text-[#555]">{dayLabel(group.dateKey)}</span>
                             <span className="text-[12px] font-semibold text-[#999] tabular-nums">{formatDuration(dayTotal)}</span>
                           </div>
-                          <div className="bg-white rounded-[24px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] overflow-hidden">
+                          <div className="bg-white rounded-[16px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] overflow-hidden">
                             {group.sessions.map((s, i) => (
-                              <div key={s.id} className={`flex items-center gap-3 px-5 py-3.5 ${i > 0 ? 'border-t border-[#f2f2f2]' : ''}`}>
+                              <div key={s.id} className={`flex items-center gap-3 px-4 py-3.5 ${i > 0 ? 'border-t border-[#f2f2f2]' : ''}`}>
                                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: activity.color }} />
                                 <div className="flex-1 min-w-0">
                                   <p className="text-[15px] font-medium text-[#333] truncate m-0">{s.description || 'Sin descripción'}</p>

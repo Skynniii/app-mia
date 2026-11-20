@@ -1,4 +1,4 @@
-import { useState, memo, useRef, useCallback, forwardRef } from 'react';
+import { useState, memo, useRef, useCallback, useEffect, forwardRef } from 'react';
 import { motion } from 'framer-motion';
 import type { Task, SortMode } from '../../types';
 import { useAuth } from '../../context/AuthContext';
@@ -9,8 +9,9 @@ import { hapticMedium, hapticHeavy } from '../../utils/haptic';
 import { Sparkles } from './Sparkles';
 import { ActivityCheckRing } from './ActivityCheckRing';
 import { useUserStorage } from '../../hooks/useUserStorage';
-import type { RunningTimer, TrackerDraft } from '../../hooks/useTimeTracker';
-import { saveRunningSession, removeTrackedActivityTask } from '../../shared/runningSession';
+import { formatElapsed, type RunningTimer, type TrackerDraft } from '../../hooks/useTimeTracker';
+import { saveRunningSession, removeTrackedActivityTask, runningDuration } from '../../shared/runningSession';
+import { requestFocusView } from '../../shared/focusRequest';
 
 /** Estado del cronómetro en curso (compartido por todos los ítems). */
 function useRunningTracker() {
@@ -91,6 +92,14 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
   const isTimerActive = !!tracker.running
     && tracker.running.startedAt !== null
     && tracker.draft.taskId === task.id;
+  // Tiempo que lleva registrándose la tarea en el Timer (se refresca por segundo).
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isTimerActive) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [isTimerActive]);
+  const runningElapsed = isTimerActive && tracker.running ? runningDuration(tracker.running, now) : 0;
   const [optimistic, setOptimistic] = useState(false);
   const [sparkle, setSparkle] = useState(false);
   const [completingImportant, setCompletingImportant] = useState(false);
@@ -193,6 +202,15 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
   // haya detenido (evita que el botón vuelva al play durante la animación).
   const showActivityCheck = isTimerActive || sparkle;
 
+  // Tocar el check de una tarea-actividad en curso abre la pantalla Focus
+  // (donde se ve y controla la sesión); ya no completa la tarea desde aquí.
+  const openTimer = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (sparkle) return;
+    requestFocusView();
+    window.dispatchEvent(new CustomEvent('app-navigate', { detail: 'cronometro' }));
+  };
+
   const handleCompleteActivityTimer = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isChecked) return;
@@ -208,7 +226,7 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
     }
     setTimeout(() => {
       setSparkle(false);
-      void removeTrackedActivityTask(task.id);
+      if (user?.uid) void removeTrackedActivityTask(user.uid, task.id);
     }, 450);
   };
 
@@ -232,8 +250,8 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
       {isActivityOnly ? (
         <motion.button
           type="button"
-          onClick={showActivityCheck ? handleCompleteActivityTimer : (e) => { e.stopPropagation(); onStartActivity?.(task); }}
-          title={showActivityCheck ? 'Completar actividad' : 'Empezar en el Timer'}
+          onClick={showActivityCheck ? openTimer : (e) => { e.stopPropagation(); onStartActivity?.(task); }}
+          title={showActivityCheck ? 'Ir a Focus' : 'Empezar en el Timer'}
           className="relative flex items-center justify-center w-[20px] h-[20px] flex-none mr-3 bg-transparent border-none p-0 cursor-pointer"
           animate={{ opacity: completingImportant ? 0 : 1, scale: completingImportant ? 0.6 : 1 }}
           transition={{ duration: 0.45, ease: 'easeInOut' }}
@@ -260,7 +278,16 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
         transition={{ duration: 0.45, ease: 'easeInOut' }}
       >
         {sparkle && <Sparkles />}
-        <input type="checkbox" readOnly checked={isChecked} className="peer appearance-none min-w-[22px] h-[22px] border-[1.5px] border-[#d1d1d6] rounded-full cursor-pointer checked:bg-[#7f70ff] checked:border-[#7f70ff] transition-all group-hover:border-[#b0a5ff]" />
+        {isTimerActive ? (
+          // Mientras se registra en el Timer, el check hace la animación de
+          // "cargando" (el mismo anillo de las tareas-actividad).
+          <>
+            <span className="absolute inset-0 rounded-full transition-colors duration-200" style={{ backgroundColor: isChecked ? '#7f70ff' : 'transparent' }} />
+            {!isChecked && <ActivityCheckRing color="#7f70ff" />}
+          </>
+        ) : (
+          <input type="checkbox" readOnly checked={isChecked} className="peer appearance-none min-w-[22px] h-[22px] border-[1.5px] border-[#d1d1d6] rounded-full cursor-pointer checked:bg-[#7f70ff] checked:border-[#7f70ff] transition-all group-hover:border-[#b0a5ff]" />
+        )}
         <svg className={`absolute w-3.5 h-3.5 text-white pointer-events-none transition-opacity duration-200 ${isChecked ? 'opacity-100' : 'opacity-0'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
       </motion.div>
       )}
@@ -285,16 +312,24 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
         )}
       </div>
 
-      {isTimerActive && !isActivityOnly && (
-        <div className="flex-none ml-1 relative flex items-center justify-center w-5 h-5">
-          <span className="absolute w-4 h-4 rounded-full bg-[#34c77b]/30 anim-timer-ring" />
-          <span className="w-2.5 h-2.5 rounded-full bg-[#34c77b] anim-timer-dot" />
-        </div>
-      )}
-
-
-
-      {reorderable ? (
+      {isActivityOnly && isTimerActive ? (
+        // Tarea-actividad en curso: a la derecha, el tiempo registrado y el
+        // check que guarda el registro y completa la actividad.
+        <button
+          type="button"
+          onClick={handleCompleteActivityTimer}
+          title="Guardar registro y completar"
+          className="flex-none ml-1 flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-full border-none cursor-pointer active:scale-95 transition-transform"
+          style={{ background: `${playColor}18` }}
+        >
+          <span className="text-[11px] font-bold tabular-nums leading-none" style={{ color: playColor }}>
+            {formatElapsed(runningElapsed)}
+          </span>
+          <span className="w-[22px] h-[22px] rounded-full flex items-center justify-center" style={{ background: playColor }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 13l4 4L19 7" /></svg>
+          </span>
+        </button>
+      ) : reorderable ? (
         <div
           onPointerDown={!isCompleted && onDragPointerDown ? (e) => { e.stopPropagation(); onDragPointerDown?.(e, task.id); } : undefined}
           className="flex-none -my-2 p-2 ml-2 text-[#c0c0c0] touch-none"

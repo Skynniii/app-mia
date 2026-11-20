@@ -1,14 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import {
-  doc, deleteField, writeBatch, getDoc,
+  doc, deleteField, writeBatch, getDoc, setDoc, updateDoc, deleteDoc, increment,
+  type DocumentData,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import {
-  getAllLocal, putLocal, deleteLocal, getLocal,
-  addOutbox, notifyLocal, subscribeLocal,
-  batchPutLocal, batchDeleteLocal,
-} from './localDB';
-import type { Task } from '../types';
+import { getCollectionStore } from './collectionStore';
 
 /**
  * Elimina recursivamente los valores `undefined` (Firestore no los admite).
@@ -35,7 +31,6 @@ function genId(): string {
   return crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-/** Detecta si un valor es un sentinel deleteField() de Firestore. */
 function isDeleteField(value: unknown): boolean {
   return (
     typeof value === 'object' &&
@@ -45,133 +40,164 @@ function isDeleteField(value: unknown): boolean {
   );
 }
 
-// ─── Hook Offline-First ───
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const aKeys = Object.keys(a as object);
+  const bKeys = Object.keys(b as object);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((k) =>
+    deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+}
+
+/** ¿El documento ya tiene exactamente ese valor? (para no repetir escrituras) */
+function sameValue(current: unknown, next: unknown): boolean {
+  if (isDeleteField(next)) return current === undefined;
+  return current !== undefined && deepEqual(current, next);
+}
+
+const noopSubscribe = () => () => {};
+
+// ─── Hook de colección en tiempo real ───
 
 /**
- * Hook genérico para subcolecciones con arquitectura Offline-First.
+ * Hook para subcolecciones de `users/{uid}` sincronizadas en tiempo real.
  *
- * - Lee de IndexedDB local (instantáneo, sin lecturas de Firestore).
- * - Las escrituras van a local + outbox (bandeja de salida).
- * - El syncEngine sube el outbox y descarga deltas en segundo plano.
- * - Sin onSnapshot: cero lecturas pasivas de Firestore.
+ * - Los datos vienen de la caché persistente de Firestore: se pintan al
+ *   instante y nunca se descarga la colección completa al abrir la app.
+ * - Cualquier cambio (aquí o en otro dispositivo) llega por el listener y se
+ *   refleja sin recargar.
+ * - Las escrituras van directas a Firestore: sin conexión quedan en cola y se
+ *   suben solas al recuperar la señal, en orden (el último cambio gana).
  */
 export function useFirestoreCollection<T extends { id: string }>(
   uid: string | null,
   subcollection: string,
 ) {
-  const [items, setItems] = useState<T[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!uid) { setItems([]); setLoading(false); return; }
-    let mounted = true;
-
-    // Cargar de IndexedDB (instantáneo). Si la lectura falla, no dejamos la
-    // sección bloqueada en el spinner: se sigue con la lista vacía.
-    getAllLocal<T>(subcollection).then((docs) => {
-      if (!mounted) return;
-      setItems(docs);
-      setLoading(false);
-    }).catch((err) => {
-      console.error(err);
-      if (mounted) setLoading(false);
-    });
-
-    // Suscribirse a cambios locales (notificados por el syncEngine)
-    const unsub = subscribeLocal(subcollection, () => {
-      getAllLocal<T>(subcollection).then((docs) => {
-        if (mounted) setItems(docs);
-      });
-    });
-
-    return () => { mounted = false; unsub(); };
-  }, [uid, subcollection]);
+  const store = useMemo(
+    () => (uid ? getCollectionStore<T>(uid, subcollection) : null),
+    [uid, subcollection],
+  );
+  const emptySnapshot = useMemo(
+    () => ({ items: [] as T[], loading: false, ready: false }),
+    [],
+  );
+  const snapshot = useSyncExternalStore(
+    store ? store.subscribe : noopSubscribe,
+    store ? store.getSnapshot : () => emptySnapshot,
+  );
 
   /** Crea un documento con ID autogenerado localmente. */
   const add = useCallback(async (data: Omit<T, 'id'>): Promise<string> => {
+    if (!uid) return '';
     const id = genId();
     const now = new Date().toISOString();
-    const newDoc = { ...data, id, updatedAt: now } as T;
-    await putLocal(subcollection, newDoc);
-    await addOutbox({ collection: subcollection, docId: id, operation: 'set', updatedAt: now });
-    notifyLocal(subcollection);
+    await setDoc(
+      doc(db, 'users', uid, subcollection, id),
+      clean({ ...data, id, updatedAt: now }) as DocumentData,
+    );
     return id;
-  }, [subcollection]);
+  }, [uid, subcollection]);
 
   /** Crea/reemplaza un documento con ID específico. */
   const set = useCallback(async (id: string, data: Omit<T, 'id'>): Promise<void> => {
+    if (!uid) return;
     const now = new Date().toISOString();
-    const newDoc = { ...data, id, updatedAt: now } as T;
-    await putLocal(subcollection, newDoc);
-    await addOutbox({ collection: subcollection, docId: id, operation: 'set', updatedAt: now });
-    notifyLocal(subcollection);
-  }, [subcollection]);
+    await setDoc(
+      doc(db, 'users', uid, subcollection, id),
+      clean({ ...data, id, updatedAt: now }) as DocumentData,
+    );
+  }, [uid, subcollection]);
 
   /** Actualiza campos de un documento. Usa deleteField() para eliminar campos. */
   const update = useCallback(async (id: string, data: Partial<T>): Promise<void> => {
-    const now = new Date().toISOString();
-    const current = await getLocal<T>(subcollection, id);
-    if (!current) return;
-
-    // Fusionar update en el doc local, manejando deleteField()
-    const merged: Record<string, unknown> = { ...current };
-    let hasChanges = false;
+    if (!uid) return;
+    const payload: DocumentData = {};
     for (const [key, value] of Object.entries(data)) {
-      if (isDeleteField(value)) {
-        if (key in merged) { delete merged[key]; hasChanges = true; }
-      } else {
-        if (merged[key] !== value) { merged[key] = value; hasChanges = true; }
-      }
+      if (value !== undefined) payload[key] = value;
     }
-    if (!hasChanges) return; // Skip write si no hay cambios reales
+    if (Object.keys(payload).length === 0) return;
 
-    merged.updatedAt = now;
+    // Sin cambios reales: no se gasta una escritura.
+    const current = store?.getSnapshot().items.find((i) => i.id === id) as
+      | DocumentData
+      | undefined;
+    if (current && Object.keys(payload).every((k) => sameValue(current[k], payload[k]))) return;
 
-    await putLocal(subcollection, merged as T);
-    await addOutbox({ collection: subcollection, docId: id, operation: 'update', updatedAt: now });
-    notifyLocal(subcollection);
-  }, [subcollection]);
+    payload.updatedAt = new Date().toISOString();
+    try {
+      await updateDoc(doc(db, 'users', uid, subcollection, id), payload);
+    } catch (err) {
+      // El documento se borró en otro dispositivo: no se resucita.
+      if ((err as { code?: string })?.code !== 'not-found') console.error(err);
+    }
+  }, [uid, subcollection, store]);
 
-  /** Elimina un documento. */
+  /** Elimina un documento (el borrado se propaga a todos los dispositivos). */
   const remove = useCallback(async (id: string): Promise<void> => {
-    const now = new Date().toISOString();
-    await deleteLocal(subcollection, id);
-    await addOutbox({ collection: subcollection, docId: id, operation: 'delete', updatedAt: now });
-    notifyLocal(subcollection);
-  }, [subcollection]);
+    if (!uid) return;
+    try {
+      await deleteDoc(doc(db, 'users', uid, subcollection, id));
+    } catch (err) {
+      console.error(err);
+    }
+  }, [uid, subcollection]);
 
-  /** Escribe múltiples documentos completos en una sola transacción (para operaciones masivas). */
+  /** Escribe múltiples documentos completos en un solo lote. */
   const batchSet = useCallback(async (docs: T[]): Promise<void> => {
-    if (docs.length === 0) return;
-    await batchPutLocal(subcollection, docs);
-    notifyLocal(subcollection);
-  }, [subcollection]);
+    if (!uid || docs.length === 0) return;
+    const now = new Date().toISOString();
+    const BATCH_LIMIT = 450; // Firestore: máx. 500 operaciones por lote
+    for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
+      const batch = writeBatch(db);
+      for (const item of docs.slice(i, i + BATCH_LIMIT)) {
+        batch.set(
+          doc(db, 'users', uid, subcollection, item.id),
+          clean({ ...item, updatedAt: now }) as DocumentData,
+        );
+      }
+      await batch.commit();
+    }
+  }, [uid, subcollection]);
 
-  /** Elimina múltiples documentos en una sola transacción (para operaciones masivas). */
+  /** Elimina múltiples documentos en un solo lote. */
   const batchRemove = useCallback(async (ids: string[]): Promise<void> => {
-    if (ids.length === 0) return;
-    await batchDeleteLocal(subcollection, ids);
-    notifyLocal(subcollection);
-  }, [subcollection]);
+    if (!uid || ids.length === 0) return;
+    const BATCH_LIMIT = 450;
+    for (let i = 0; i < ids.length; i += BATCH_LIMIT) {
+      const batch = writeBatch(db);
+      for (const id of ids.slice(i, i + BATCH_LIMIT)) {
+        batch.delete(doc(db, 'users', uid, subcollection, id));
+      }
+      await batch.commit();
+    }
+  }, [uid, subcollection]);
 
-  return useMemo(() => ({ items, loading, add, set, update, remove, batchSet, batchRemove }), [items, loading, add, set, update, remove, batchSet, batchRemove]);
+  return useMemo(() => ({
+    items: snapshot.items,
+    loading: snapshot.loading,
+    ready: snapshot.ready,
+    add, set, update, remove, batchSet, batchRemove,
+  }), [snapshot, add, set, update, remove, batchSet, batchRemove]);
 }
 
-// ─── Función auxiliar: incrementar tiempo de tarea (offline-first) ───
+// ─── Función auxiliar: incrementar tiempo de tarea ───
 
 /**
- * Incrementa el totalTimeSpent de una tarea.
- * Lee de la DB local, incrementa, y encola en outbox.
+ * Suma segundos a `totalTimeSpent` de una tarea.
+ * Usa `increment()`: es atómico y no se pierden sumas concurrentes.
  */
 export async function incrementTaskTime(uid: string, taskId: string, seconds: number): Promise<void> {
-  const task = await getLocal<Task>('tasks', taskId);
-  if (!task) return;
-  const now = new Date().toISOString();
-  const newTime = (task.totalTimeSpent || 0) + seconds;
-  const updated = { ...task, totalTimeSpent: newTime, updatedAt: now };
-  await putLocal('tasks', updated);
-  await addOutbox({ collection: 'tasks', docId: taskId, operation: 'update', updatedAt: now });
-  notifyLocal('tasks');
+  if (!uid || !taskId || !seconds) return;
+  try {
+    await updateDoc(doc(db, 'users', uid, 'tasks', taskId), {
+      totalTimeSpent: increment(seconds),
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    if ((err as { code?: string })?.code !== 'not-found') console.error(err);
+  }
 }
 
 // ─── Migración one-time ───
@@ -180,7 +206,6 @@ export async function incrementTaskTime(uid: string, taskId: string, seconds: nu
  * Migración one-time: mueve los datos del documento único users/{uid}
  * (formato anterior) a las subcolecciones nuevas.
  * Idempotente: si ya migró, no hace nada.
- * Ahora incluye updatedAt en todos los documentos migrados.
  */
 export async function migrateToSubcollections(uid: string): Promise<void> {
   const userRef = doc(db, 'users', uid);

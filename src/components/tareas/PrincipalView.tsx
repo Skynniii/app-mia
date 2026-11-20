@@ -443,11 +443,11 @@ export function PrincipalView({ lists, tasks, principalList, onUpdateList, onTog
           <p className="text-[13px] text-[#c0c0c0] py-2">Sin tareas para hoy.</p>
         )}
 
-        <DateSectionHeader title="Mañana" />
-        {mananaTasks.length > 0 ? (
-          <TaskList items={mananaTasks} render={renderTaskNoDate} />
-        ) : (
-          <p className="text-[13px] text-[#c0c0c0] py-2">Sin tareas para mañana.</p>
+        {mananaTasks.length > 0 && (
+          <>
+            <DateSectionHeader title="Mañana" />
+            <TaskList items={mananaTasks} render={renderTaskNoDate} />
+          </>
         )}
 
         {upcoming.length > 0 && (

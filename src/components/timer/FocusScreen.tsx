@@ -17,6 +17,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useUserStorage } from '../../hooks/useUserStorage';
 import { hapticMedium, hapticHeavy } from '../../utils/haptic';
 
+import { BackButton, DETAIL_HEADER_TOP } from '../ui/DetailScreen';
 import type { Task, TaskList } from '../../types';
 
 interface Props extends ActiveTimerCardProps {
@@ -258,10 +259,8 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
     <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={sheetTransition} className="fixed inset-0 z-[9999] flex flex-col bg-white">
       <style>{`[data-ph]:empty::before{content:attr(data-ph);color:#aaa;pointer-events:none}`}</style>
       {/* === Barra superior === */}
-      <div className="flex items-center justify-between px-4 pb-3 shrink-0" style={{ paddingTop: 'max(env(safe-area-inset-top), 20px)' }}>
-        <button onClick={onBack} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors active:scale-90">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5" /><path d="M12 19l-7-7 7-7" /></svg>
-        </button>
+      <div className="flex items-center justify-between px-4 pb-3 shrink-0" style={{ paddingTop: DETAIL_HEADER_TOP }}>
+        <BackButton onClick={onBack} />
         <div className="relative">
           {!hasStarted ? (
             <button onClick={() => setModeDropdownOpen(!modeDropdownOpen)} className="flex items-center gap-1.5 px-4 py-2 rounded-full hover:bg-black/5 transition-colors">

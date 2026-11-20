@@ -4,6 +4,7 @@ import { useTimeTracker, ACTIVITY_COLORS } from '../../hooks/useTimeTracker';
 import { ModalNeuromorfico } from '../ui/ModalNeuromorfico';
 import { useDeviceCapability } from '../../context/DeviceCapabilityContext';
 import { useBackHandler } from '../../hooks/useBackHandler';
+import { BackButton, DETAIL_HEADER_TOP } from '../ui/DetailScreen';
 
 interface Props {
   onBack: () => void;
@@ -52,15 +53,13 @@ export function ActivitiesPage({ onBack }: Props) {
       className="fixed inset-0 z-[1500] bg-[#f7f6f9] flex flex-col"
     >
       {/* Header */}
-      <div className="flex items-center gap-3 px-5 pt-5 pb-3 shrink-0">
-        <button onClick={onBack} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors active:scale-90">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5" /><path d="M12 19l-7-7 7-7" /></svg>
-        </button>
+      <div className="flex items-center gap-3 px-4 pb-3 shrink-0" style={{ paddingTop: DETAIL_HEADER_TOP }}>
+        <BackButton onClick={onBack} />
         <h1 className="text-[20px] font-bold text-[#333] m-0">Actividades</h1>
       </div>
 
       {/* Lista */}
-      <div className="flex-1 overflow-y-auto no-scrollbar px-5 pb-5">
+      <div className="flex-1 overflow-y-auto no-scrollbar px-4 pb-5">
         <div className="flex flex-col gap-2.5">
           <AnimatePresence>
             {activities.map((a) => (

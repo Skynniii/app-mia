@@ -10,6 +10,7 @@ import { TimePickerModal } from '../tareas/TimePickerModal';
 import { ActivityPicker } from './ActivityPicker';
 import { TaskPicker } from './TaskPicker';
 import { clampNotes, limitBeforeInput } from '../../utils/notesLimit';
+import { BackButton, DETAIL_HEADER_TOP } from '../ui/DetailScreen';
 
 interface Props {
   entry: TimeSession;
@@ -162,10 +163,8 @@ export function SessionDetailModal({ entry, onUpdate, onDelete, onClose, tasks, 
       className="absolute left-0 right-0 top-0 bottom-0 z-[1000] bg-white flex flex-col origin-top"
     >
       <style>{`[data-ph]:empty::before{content:attr(data-ph);color:#bbb;pointer-events:none}`}</style>
-      <div className="flex items-center justify-between px-4 pb-3 border-b border-[#f0f0f5] shrink-0" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-        <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors active:scale-90">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
-        </button>
+      <div className="flex items-center justify-between px-4 pb-3 border-b border-[#f0f0f5] shrink-0" style={{ paddingTop: DETAIL_HEADER_TOP }}>
+        <BackButton onClick={onClose} />
         <button onClick={() => setConfirmDelete(true)} className="text-[#ff4d4d] p-2.5 rounded-full hover:bg-[#fff5f5] transition-colors border-none bg-transparent cursor-pointer">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
         </button>

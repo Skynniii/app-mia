@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { Task, TaskList, SortMode } from '../../types';
 import { TareaItem } from './TareaItem';
@@ -92,18 +92,19 @@ export function ListaTareasCard({
   // --- Modo reordenar + arrastre fluido ---
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOrder, setDragOrder] = useState<string[] | null>(null);
-  const [overlayY, setOverlayY] = useState(0);
   const [reorderMode, setReorderMode] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const ulRef = useRef<HTMLUListElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const lpTimer = useRef<number | null>(null);
+  const lpCleanup = useRef<(() => void) | null>(null);
   const didDrag = useRef(false);
   const dragOrderRef = useRef<string[] | null>(null);
   const taskByIdRef = useRef<Record<string, Task>>({});
-  const drag = useRef({ startY: 0, height: 0, startTop: 0, ulTop: 0, initScroll: 0, id: '', others: [] as string[] });
+  // Geometría medida una sola vez al empezar a arrastrar: nada de rects por frame.
+  const drag = useRef({ startY: 0, height: 0, startTop: 0, ulTop: 0, initScroll: 0, id: '', others: [] as string[], centers: [] as number[], maxY: 0, lastY: 0, frame: 0 });
   const preDragCleanup = useRef<(() => void) | null>(null);
-  const autoScrollRef = useRef<number | null>(null);
 
   const sortMode: SortMode = list.sortMode || 'custom';
   const active = tasks.filter((t) => !t.completed);
@@ -145,93 +146,155 @@ export function ListaTareasCard({
     setDragOrder(v);
   }, []);
 
-  const onItemPointerDown = useCallback((e: React.PointerEvent, id: string) => {
-    if (!reorderMode) return;
-    if (preDragCleanup.current) preDragCleanup.current();
-    const li = e.currentTarget as HTMLElement;
-    const r = li.getBoundingClientRect();
-    const ulR = ulRef.current?.getBoundingClientRect();
-    if (r && ulR) {
-      drag.current = { startY: e.clientY, height: r.height, startTop: r.top, ulTop: ulR.top, initScroll: scrollRef.current?.scrollTop ?? 0, id, others: baseIds.filter((x) => x !== id) };
+  /** Mueve la tarjeta arrastrada (transform, sin re-render) y recalcula su hueco. */
+  const applyPointer = useCallback((clientY: number) => {
+    const d = drag.current;
+    const scrollDelta = (scrollRef.current?.scrollTop ?? 0) - d.initScroll;
+    // Acotada a la lista: ni por encima del título ni por debajo de completadas.
+    const y = Math.min(d.maxY, Math.max(0, d.startTop - d.ulTop + (clientY - d.startY) + scrollDelta));
+    if (overlayRef.current) overlayRef.current.style.transform = `translate3d(0, ${y}px, 0)`;
+    const yInUl = clientY - d.ulTop + scrollDelta;
+    let above = 0;
+    for (let i = 0; i < d.centers.length; i += 1) if (yInUl > d.centers[i]) above += 1;
+    const cur = dragOrderRef.current;
+    if (!cur) return;
+    const next = [...d.others.slice(0, above), d.id, ...d.others.slice(above)];
+    let changed = next.length !== cur.length;
+    if (!changed) {
+      for (let i = 0; i < next.length; i += 1) if (next[i] !== cur[i]) { changed = true; break; }
     }
+    if (changed) setDragOrderBoth(next);
+  }, [setDragOrderBoth]);
 
+  /** Arranca el arrastre de `id` midiendo la lista una sola vez. */
+  const startDrag = useCallback((clientY: number, li: HTMLElement, id: string) => {
+    const ul = ulRef.current;
+    if (!ul) return;
+    if (preDragCleanup.current) preDragCleanup.current();
+    // Desde el asa se recibe el asa: se mide siempre la tarjeta completa.
+    const r = (li.closest('[data-task]') as HTMLElement | null)?.getBoundingClientRect() ?? li.getBoundingClientRect();
+    const ulR = ul.getBoundingClientRect();
+    const domIds: string[] = [];
+    const centersById: Record<string, number> = {};
+    ul.querySelectorAll<HTMLElement>('[data-task]').forEach((el) => {
+      const tid = el.getAttribute('data-task');
+      if (!tid) return;
+      domIds.push(tid);
+      if (tid === id) return;
+      const rr = el.getBoundingClientRect();
+      centersById[tid] = rr.top - ulR.top + rr.height / 2;
+    });
+    const others = domIds.filter((x) => x !== id);
+    drag.current = {
+      startY: clientY, height: r.height, startTop: r.top, ulTop: ulR.top,
+      initScroll: scrollRef.current?.scrollTop ?? 0, id, others,
+      centers: others.map((x) => centersById[x] ?? 0),
+      maxY: Math.max(0, ulR.height - r.height), lastY: clientY, frame: 0,
+    };
     const onTouchMoveBlock = (ev: TouchEvent) => ev.preventDefault();
     didDrag.current = true;
     setDragId(id);
-    setDragOrderBoth(baseIds.slice());
-    setOverlayY(drag.current.startTop - drag.current.ulTop);
+    setDragOrderBoth(domIds);
     window.addEventListener('touchmove', onTouchMoveBlock, { passive: false });
     preDragCleanup.current = () => window.removeEventListener('touchmove', onTouchMoveBlock);
-  }, [reorderMode, baseIds, setDragOrderBoth]);
+  }, [setDragOrderBoth]);
+
+  const onItemPointerDown = useCallback((e: React.PointerEvent, id: string) => {
+    if (!reorderMode) return;
+    startDrag(e.clientY, e.currentTarget as HTMLElement, id);
+  }, [reorderMode, startDrag]);
 
   const onItemPointerEnd = useCallback(() => {
     if (preDragCleanup.current) preDragCleanup.current();
   }, []);
+
+  const clearLongPress = useCallback(() => {
+    if (lpTimer.current !== null) { window.clearTimeout(lpTimer.current); lpTimer.current = null; }
+    if (lpCleanup.current) { lpCleanup.current(); lpCleanup.current = null; }
+  }, []);
+
+  /**
+   * En orden personalizado, mantener presionada una tarjeta solo activa el modo
+   * ordenar: ninguna tarea entra en arrastre sin tomarla de sus barras.
+   */
+  const onCardPointerDown = useCallback((e: React.PointerEvent, _id: string) => {
+    if (sortMode !== 'custom' || reorderMode) return;
+    if (e.button > 0) return;
+    clearLongPress();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const move = (ev: PointerEvent) => {
+      if (Math.abs(ev.clientX - startX) > 10 || Math.abs(ev.clientY - startY) > 10) clearLongPress();
+    };
+    const up = () => clearLongPress();
+    window.addEventListener('pointermove', move, { passive: true });
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    lpCleanup.current = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+    lpTimer.current = window.setTimeout(() => {
+      lpTimer.current = null;
+      if (lpCleanup.current) { lpCleanup.current(); lpCleanup.current = null; }
+      setReorderMode(true);
+    }, 380);
+  }, [sortMode, reorderMode, clearLongPress]);
 
   const onExpandGuarded = useCallback((id: string) => {
     if (didDrag.current) { didDrag.current = false; return; }
     onExpandTask(id);
   }, [onExpandTask]);
 
+  // Posición inicial de la tarjeta flotante (después se mueve por transform).
+  useLayoutEffect(() => {
+    if (!dragId || !overlayRef.current) return;
+    overlayRef.current.style.transform = `translate3d(0, ${drag.current.startTop - drag.current.ulTop}px, 0)`;
+  }, [dragId]);
+
   useEffect(() => {
     if (!dragId) return;
+    const d = drag.current;
+    let autoRaf = 0;
+    let autoSpeed = 0;
 
-    const stopAutoScroll = () => {
-      if (autoScrollRef.current !== null) {
-        cancelAnimationFrame(autoScrollRef.current);
-        autoScrollRef.current = null;
-      }
-    };
-
-    const checkAutoScroll = (clientY: number) => {
+    const autoStep = () => {
       const container = scrollRef.current;
-      if (!container) return;
-      const rect = container.getBoundingClientRect();
-      const edge = 70;
-      const speed = 10;
-      if (clientY < rect.top + edge && container.scrollTop > 0) {
-        const intensity = Math.max(0.3, 1 - (clientY - rect.top) / edge);
-        if (autoScrollRef.current === null) {
-          const step = () => {
-            container.scrollTop = Math.max(0, container.scrollTop - speed * intensity);
-            autoScrollRef.current = requestAnimationFrame(step);
-          };
-          autoScrollRef.current = requestAnimationFrame(step);
-        }
-      } else if (clientY > rect.bottom - edge && container.scrollTop < container.scrollHeight - container.clientHeight) {
-        const intensity = Math.max(0.3, (clientY - (rect.bottom - edge)) / edge);
-        if (autoScrollRef.current === null) {
-          const step = () => {
-            container.scrollTop = Math.min(container.scrollHeight, container.scrollTop + speed * intensity);
-            autoScrollRef.current = requestAnimationFrame(step);
-          };
-          autoScrollRef.current = requestAnimationFrame(step);
-        }
-      } else {
-        stopAutoScroll();
-      }
+      if (!container || autoSpeed === 0) { autoRaf = 0; return; }
+      const max = container.scrollHeight - container.clientHeight;
+      container.scrollTop = Math.max(0, Math.min(max, container.scrollTop + autoSpeed));
+      applyPointer(d.lastY);
+      autoRaf = requestAnimationFrame(autoStep);
+    };
+    const setAuto = (speed: number) => {
+      autoSpeed = speed;
+      if (speed !== 0 && !autoRaf) autoRaf = requestAnimationFrame(autoStep);
     };
 
     const onMove = (e: PointerEvent) => {
-      const d = drag.current;
-      const scrollDelta = (scrollRef.current?.scrollTop ?? 0) - d.initScroll;
-      setOverlayY((d.startTop - d.ulTop) + (e.clientY - d.startY) + scrollDelta);
-      const ul = ulRef.current;
-      if (!ul) return;
-      const els = Array.from(ul.querySelectorAll('[data-task]'));
-      let above = 0;
-      els.forEach((el) => {
-        if (el.getAttribute('data-task') === d.id) return;
-        const r = el.getBoundingClientRect();
-        if (e.clientY > r.top + r.height / 2) above++;
-      });
-      const next = [...d.others.slice(0, above), d.id, ...d.others.slice(above)];
-      setDragOrderBoth(next);
-      checkAutoScroll(e.clientY);
+      d.lastY = e.clientY;
+      // Un solo cálculo por frame, aunque el navegador entregue varios eventos.
+      if (!d.frame) {
+        d.frame = requestAnimationFrame(() => { d.frame = 0; applyPointer(d.lastY); });
+      }
+      const container = scrollRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const edge = 64;
+      if (e.clientY < rect.top + edge) {
+        setAuto(-Math.max(4, (1 - (e.clientY - rect.top) / edge) * 16));
+      } else if (e.clientY > rect.bottom - edge) {
+        setAuto(Math.max(4, ((e.clientY - (rect.bottom - edge)) / edge) * 16));
+      } else {
+        setAuto(0);
+      }
     };
-    const onUp = () => {
+
+    const finish = () => {
       if (preDragCleanup.current) preDragCleanup.current();
-      stopAutoScroll();
+      setAuto(0);
+      if (d.frame) { cancelAnimationFrame(d.frame); d.frame = 0; }
       const cur = dragOrderRef.current;
       if (cur) {
         const ordered = cur.map((id) => taskByIdRef.current[id]).filter(Boolean) as Task[];
@@ -239,15 +302,24 @@ export function ListaTareasCard({
       }
       setDragId(null);
       setDragOrderBoth(null);
+      // El clic que cierra el gesto ya se descartó; si no llega, no se queda pegado.
+      window.setTimeout(() => { didDrag.current = false; }, 350);
     };
+
     window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
     return () => {
       window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      stopAutoScroll();
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      if (autoRaf) cancelAnimationFrame(autoRaf);
+      if (d.frame) { cancelAnimationFrame(d.frame); d.frame = 0; }
     };
-  }, [dragId, list.id, onReorderListTasks, setDragOrderBoth]);
+  }, [dragId, list.id, onReorderListTasks, setDragOrderBoth, applyPointer]);
+
+  // Limpia el temporizador de pulsación larga al desmontar.
+  useEffect(() => () => clearLongPress(), [clearLongPress]);
 
   // Salir del modo reordenar al tocar fuera de la tarjeta
   useEffect(() => {
@@ -352,7 +424,7 @@ export function ListaTareasCard({
               )}
               {activeNonSep.length === 0 && !dragId && <p className="text-center text-[#a0a0a0] text-sm py-5 font-medium">Lista impecable. Sin pendientes.</p>}
               {draggedTask && (
-                <div style={{ position: 'absolute', top: overlayY, left: 0, right: 0, zIndex: 50, pointerEvents: 'none' }}>
+                <div ref={overlayRef} style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 50, pointerEvents: 'none', willChange: 'transform' }}>
                   {draggedTask.isSeparator ? (
                     <SeparatorItem task={draggedTask} reorderable dragId={dragId} overlay onDragPointerDown={onItemPointerDown} onDragPointerEnd={onItemPointerEnd} />
                   ) : (
@@ -378,7 +450,7 @@ export function ListaTareasCard({
                   const task = taskByIdRef.current[id];
                   if (!task) return null;
                   if (task.isSeparator) return <SeparatorItem task={task} />;
-                  return <TareaItem task={task} sortMode={sortMode} onToggle={onToggleTask} onUpdate={onUpdateTask} onExpand={onExpandTask} onStartActivity={onStartActivity} activityColor={actColor(task)} activityName={actName(task)} />;
+                  return <TareaItem task={task} sortMode={sortMode} onToggle={onToggleTask} onUpdate={onUpdateTask} onExpand={onExpandGuarded} onStartActivity={onStartActivity} onDragPointerDown={onCardPointerDown} onDragPointerEnd={clearLongPress} activityColor={actColor(task)} activityName={actName(task)} />;
                 }}
               />
               {activeNonSep.length === 0 && <p className="text-center text-[#a0a0a0] text-sm py-5 font-medium">Lista impecable. Sin pendientes.</p>}
@@ -392,7 +464,7 @@ export function ListaTareasCard({
                   if (task.isSeparator) {
                     return <SeparatorItem key={task.id} task={task} />;
                   }
-                  return <TareaItem key={task.id} task={task} sortMode={sortMode} onToggle={onToggleTask} onUpdate={onUpdateTask} onExpand={onExpandTask} onStartActivity={onStartActivity} activityColor={actColor(task)} activityName={actName(task)} />;
+                  return <TareaItem key={task.id} task={task} sortMode={sortMode} onToggle={onToggleTask} onUpdate={onUpdateTask} onExpand={onExpandGuarded} onStartActivity={onStartActivity} onDragPointerDown={onCardPointerDown} onDragPointerEnd={clearLongPress} activityColor={actColor(task)} activityName={actName(task)} />;
                 })}
               </AnimatePresence>
               {activeNonSep.length === 0 && <p className="text-center text-[#a0a0a0] text-sm py-5 font-medium">Lista impecable. Sin pendientes.</p>}

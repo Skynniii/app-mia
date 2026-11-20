@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useBackHandler } from '../../hooks/useBackHandler';
 import { useGoogleCalendar } from '../../hooks/useGoogleCalendar';
+import { BackButton, DETAIL_HEADER_TOP } from '../ui/DetailScreen';
 import type { GoogleCalendarLink } from '../../types';
 
 interface Props {
@@ -58,13 +59,9 @@ export function GoogleCalendarModal({ onClose }: Props) {
       transition={{ duration: 0.2, ease: 'easeOut' }}
       className="fixed inset-0 bg-white z-[2100] flex flex-col overflow-y-auto no-scrollbar"
     >
-      <div className="sticky top-0 z-10 bg-white pb-2" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-        <div className="flex items-center gap-3 px-5 pt-2">
-          <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors active:scale-90 shrink-0">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
-            </svg>
-          </button>
+      <div className="sticky top-0 z-10 bg-white pb-2" style={{ paddingTop: DETAIL_HEADER_TOP }}>
+        <div className="flex items-center gap-3 px-4">
+          <BackButton onClick={onClose} />
           <div className="min-w-0">
             <h1 className="text-[#2b2b2b] font-bold text-2xl m-0">Google Calendar</h1>
             <p className="text-[13px] text-[#999] m-0 mt-0.5">Eventos, cumpleaños y festivos</p>
@@ -72,7 +69,7 @@ export function GoogleCalendarModal({ onClose }: Props) {
         </div>
       </div>
 
-      <div className="flex-1 px-5 pb-[100px]">
+      <div className="flex-1 px-4 pb-[100px]">
         <div className="p-4 rounded-2xl bg-[#f8f8fa] border border-[#eee]">
           <p className="text-[13px] font-semibold text-[#333] m-0 mb-2">Cómo vincularlo</p>
           <Steps />

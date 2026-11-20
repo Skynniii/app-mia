@@ -74,6 +74,23 @@ export interface CalendarEvent {
   notes?: string;
   birthday?: boolean;               // se repite cada año (cumpleaños)
   updatedAt?: string;
+  // Eventos importados de Google Calendar (solo lectura, los gestiona el sync)
+  source?: 'google';
+  googleCalendarId?: string;        // vínculo (GoogleCalendarLink.id)
+  googleUid?: string;               // UID del evento en el ICS
+  allDay?: boolean;
+  yearly?: boolean;                 // se repite cada año (cumpleaños y aniversarios)
+  holiday?: boolean;                // festivo importado
+}
+
+/** Calendario de Google vinculado a la app (dirección secreta en formato iCal). */
+export interface GoogleCalendarLink {
+  id: string;
+  url: string;
+  name: string;
+  kind: 'calendar' | 'birthday' | 'holiday';
+  color: string;
+  lastSync?: string;
 }
 
 export interface TimeSession {

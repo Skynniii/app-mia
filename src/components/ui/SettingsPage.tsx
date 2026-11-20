@@ -1,6 +1,10 @@
-import { motion } from 'framer-motion';
+import { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useSettings, type Settings } from '../../context/SettingsContext';
 import { useBackHandler } from '../../hooks/useBackHandler';
+import { useGoogleCalendar } from '../../hooks/useGoogleCalendar';
+import { GoogleCalendarModal } from '../calendar/GoogleCalendarModal';
+import { BackButton, DETAIL_HEADER_TOP } from './DetailScreen';
 
 interface Props {
   onBack: () => void;
@@ -81,6 +85,8 @@ function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }
 export function SettingsPage({ onBack }: Props) {
   useBackHandler(true, onBack);
   const { settings, update } = useSettings();
+  const { links: googleLinks } = useGoogleCalendar();
+  const [showGoogle, setShowGoogle] = useState(false);
 
   return (
     <motion.div
@@ -91,14 +97,9 @@ export function SettingsPage({ onBack }: Props) {
       className="absolute top-0 left-0 w-full h-full bg-white z-[1100] flex flex-col overflow-y-auto no-scrollbar"
     >
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-white pb-2" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-        <div className="flex items-center gap-3 px-5 pt-2">
-          <button onClick={onBack} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors active:scale-90 shrink-0">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="19" y1="12" x2="5" y2="12" />
-              <polyline points="12 19 5 12 12 5" />
-            </svg>
-          </button>
+      <div className="sticky top-0 z-10 bg-white pb-2" style={{ paddingTop: DETAIL_HEADER_TOP }}>
+        <div className="flex items-center gap-3 px-4">
+          <BackButton onClick={onBack} />
           <div>
             <h1 className="text-[#2b2b2b] font-bold text-2xl m-0">Configuración</h1>
             <p className="text-[13px] text-[#999] m-0 mt-0.5">Personaliza tu experiencia</p>
@@ -107,7 +108,7 @@ export function SettingsPage({ onBack }: Props) {
       </div>
 
       {/* Contenido */}
-      <div className="flex-1 px-5 pb-[100px]">
+      <div className="flex-1 px-4 pb-[100px]">
         {/* TEMA DE COLOR */}
         <SectionHeader
           icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor" /><circle cx="17.5" cy="10.5" r=".5" fill="currentColor" /><circle cx="8.5" cy="7.5" r=".5" fill="currentColor" /><circle cx="6.5" cy="12.5" r=".5" fill="currentColor" /><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" /></svg>}
@@ -227,6 +228,27 @@ export function SettingsPage({ onBack }: Props) {
             on={settings.showPastEvents}
             onChange={(v) => update('showPastEvents', v)}
           />
+          <button
+            onClick={() => setShowGoogle(true)}
+            className="w-full flex items-center gap-3 p-4 bg-[#f8f8fa] rounded-2xl border border-[#eee] text-left cursor-pointer active:scale-[0.99] transition-transform"
+          >
+            <span className="w-9 h-9 rounded-xl bg-white border border-[#eee] flex items-center justify-center shrink-0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7f70ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /><path d="M9 15l2 2 4-4" />
+              </svg>
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[15px] font-semibold text-[#333]">Google Calendar</span>
+              <span className="block text-[13px] text-[#999] mt-0.5">
+                {googleLinks.length > 0
+                  ? `${googleLinks.length} calendario${googleLinks.length === 1 ? '' : 's'} vinculado${googleLinks.length === 1 ? '' : 's'}`
+                  : 'Trae eventos, cumpleaños y festivos'}
+              </span>
+            </span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c0c0c8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
         </div>
 
         {/* TASKS */}
@@ -282,6 +304,10 @@ export function SettingsPage({ onBack }: Props) {
           />
         </div>
       </div>
+
+      <AnimatePresence>
+        {showGoogle && <GoogleCalendarModal onClose={() => setShowGoogle(false)} />}
+      </AnimatePresence>
     </motion.div>
   );
 }

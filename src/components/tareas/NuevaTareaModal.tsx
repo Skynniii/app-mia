@@ -3,10 +3,11 @@ import { motion } from 'framer-motion';
 import { useBackHandler } from '../../hooks/useBackHandler';
 import { CalendarModal } from './CalendarModal';
 import { SourcePickerModal } from './SourcePickerModal';
+import { normalizeUrl } from './LinkPreview';
 import { ActivityPicker } from '../timer/ActivityPicker';
 import { useActivities } from '../../hooks/useActivities';
 import { useSettings } from '../../context/SettingsContext';
-import { clampNotes, limitBeforeInput } from '../../utils/notesLimit';
+import { clampNotes, limitBeforeInput, plainNotesLength, NOTES_MAX_LENGTH } from '../../utils/notesLimit';
 import type { RepeatConfig, TaskList, Activity, Task } from '../../types';
 
 interface Props {
@@ -18,7 +19,7 @@ interface Props {
   /** Fecha preseleccionada (usada al crear una tarea desde el calendario). */
   initialDate?: string;
   onClose: () => void;
-  onCreate: (data: { title: string; notes?: string; scheduledDate?: string; scheduledTime?: string; dueDate?: string; isImportant?: boolean; repeat?: RepeatConfig; activityId?: string; linkedTaskId?: string; isActivityOnly?: boolean }, listId: string) => void;
+  onCreate: (data: { title: string; notes?: string; scheduledDate?: string; scheduledTime?: string; dueDate?: string; isImportant?: boolean; repeat?: RepeatConfig; activityId?: string; linkedTaskId?: string; isActivityOnly?: boolean; links?: string[] }, listId: string) => void;
 }
 
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -63,6 +64,9 @@ export function NuevaTareaModal({ isOpen, defaultListId, availableLists, allList
   // Solo cuando el usuario la elige explícitamente (flecha o ícono) se crea una
   // tarea-actividad, es decir, un ítem de actividad sin título.
   const [activityOnly, setActivityOnly] = useState(false);
+  const [links, setLinks] = useState<string[]>([]);
+  const [linkInput, setLinkInput] = useState('');
+  const [linksOpen, setLinksOpen] = useState(false);
   const [showSourcePicker, setShowSourcePicker] = useState(false);
   const [activityPickerOpen, setActivityPickerOpen] = useState(false);
   const notesRef = useRef<HTMLDivElement>(null);
@@ -77,6 +81,7 @@ export function NuevaTareaModal({ isOpen, defaultListId, availableLists, allList
   useEffect(() => {
     if (isOpen) {
       setTitle(''); setNotesHtml(''); setNotesOpen(false); setFocusTitleAfterNotes(false);
+      setLinks([]); setLinkInput(''); setLinksOpen(false);
       setScheduledDate(initialDate); setScheduledTime(undefined); setDueDate(undefined); setRepeat(undefined);
       setImportant(false); setShowPicker(false);
       setTargetListId(defaultListId);
@@ -103,16 +108,42 @@ export function NuevaTareaModal({ isOpen, defaultListId, availableLists, allList
     if (focusTitleAfterNotes) titleRef.current?.focus({ preventScroll: true });
   }, [notesOpen, focusTitleAfterNotes]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // El foco llega cuando el modal ya terminó de entrar: el teclado sube después
+  // y empuja el modal, en vez de aparecer a mitad de la animación.
+  useEffect(() => {
+    if (!isOpen || isLinked) return;
+    const t = window.setTimeout(() => titleRef.current?.focus({ preventScroll: true }), 240);
+    return () => window.clearTimeout(t);
+  }, [isOpen, isLinked]);
+
   // La pestaña sube con el teclado escribiendo directo en el estilo: si se
   // hiciera con estado, cada frame del teclado re-renderizaría todo el modal.
+  // Cuando el teclado redimensiona el layout (interactive-widget=resizes-content
+  // / adjustResize) es el navegador quien arrastra el modal: compensar además con
+  // el visualViewport duplicaba el desplazamiento y provocaba el salto al abrir.
+  // Solo se compensa si el layout no cambia (teclado superpuesto, p. ej. iOS).
   useEffect(() => {
     const panel = panelRef.current;
     const vv = window.visualViewport;
     if (!isOpen || !panel || !vv) return;
     let raf = 0;
+    let lastInner = window.innerHeight;
+    let kbFrames = 0;
     const apply = () => {
-      const kb = window.innerHeight - vv.height;
-      panel.style.bottom = kb > 1 ? `${kb}px` : '0px';
+      const inner = window.innerHeight;
+      if (Math.abs(inner - lastInner) > 1) {
+        // El layout se está redimensionando: el navegador ya mueve el modal.
+        lastInner = inner;
+        kbFrames = 0;
+        panel.style.bottom = '0px';
+        return;
+      }
+      const kb = inner - vv.height;
+      if (kb <= 1) { kbFrames = 0; panel.style.bottom = '0px'; return; }
+      // Teclado superpuesto: se sigue frame a frame, pero solo tras dos lecturas
+      // estables para ignorar valores transitorios del cambio de viewport.
+      kbFrames += 1;
+      if (kbFrames >= 2) panel.style.bottom = `${kb}px`;
     };
     const update = () => {
       if (raf) return;
@@ -145,6 +176,24 @@ export function NuevaTareaModal({ isOpen, defaultListId, availableLists, allList
     setNotesOpen(false);
   };
 
+  const handleAddLink = () => {
+    const trimmed = linkInput.trim();
+    if (!trimmed) return;
+    const normalized = normalizeUrl(trimmed);
+    setLinks((prev) => (prev.includes(normalized) ? prev : [...prev, normalized]));
+    setLinkInput('');
+  };
+
+  const handleRemoveLink = (index: number) => {
+    setLinks((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleToggleLinks = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!linksOpen) closeKeyboard();
+    setLinksOpen((v) => !v);
+  };
+
   const submit = () => {
     const trimmed = title.trim();
     if (isLinked) {
@@ -156,7 +205,7 @@ export function NuevaTareaModal({ isOpen, defaultListId, availableLists, allList
     if (!trimmed && !(activityOnly && activityId)) return;
     const notesClean = notesHtml.replace(/<[^>]*>/g, '').trim() ? notesHtml : '';
     const isActivityOnly = activityOnly && !trimmed && !!activityId;
-    onCreate({ title: trimmed, notes: notesClean || undefined, scheduledDate, scheduledTime, dueDate, isImportant: important, repeat, activityId, isActivityOnly }, targetListId);
+    onCreate({ title: trimmed, notes: notesClean || undefined, links: links.length ? links : undefined, scheduledDate, scheduledTime, dueDate, isImportant: important, repeat, activityId, isActivityOnly }, targetListId);
     onClose();
   };
 
@@ -184,9 +233,12 @@ export function NuevaTareaModal({ isOpen, defaultListId, availableLists, allList
               className="fixed inset-0 bg-black/40 z-[1001]"
               onClick={onClose}
             />
-            <div
+            <motion.div
               ref={panelRef}
-              className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[420px] z-[1002] bg-white rounded-t-[28px] shadow-[0_-8px_30px_rgba(0,0,0,0.12)] px-5 pt-3 pb-6"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+              className="fixed bottom-0 left-0 right-0 mx-auto w-full max-w-[420px] z-[1002] bg-white rounded-t-[28px] shadow-[0_-8px_30px_rgba(0,0,0,0.12)] px-5 pt-3 pb-6"
               // Tocar cualquier zona interior del modal cierra las notas si están vacías
               onClick={() => { if (!hasNotes) setNotesOpen(false); }}
             >
@@ -220,7 +272,6 @@ export function NuevaTareaModal({ isOpen, defaultListId, availableLists, allList
                   onKeyDown={(e) => e.key === 'Enter' && submit()}
                   placeholder={activityOnly ? (selectedActivity?.name ?? 'Actividad') : '¿Qué tarea quieres añadir?'}
                   readOnly={isLinked}
-                  autoFocus={!isLinked}
                   className={`w-full border rounded-xl py-3 pl-3.5 pr-10 text-[15px] outline-none transition-colors ${isLinked ? 'border-[#7f70ff]/30 bg-[#f0edff] text-[#7f70ff] font-medium cursor-default' : 'border-[#e4e4ed] text-[#333] bg-[#fafafc] focus:border-[#7f70ff] focus:bg-white'}`}
                 />
                 {(!title.trim() || isLinked) && (
@@ -246,6 +297,9 @@ export function NuevaTareaModal({ isOpen, defaultListId, availableLists, allList
                 )}
                 {iconBtn(notesOpen || hasNotes, handleToggleNotes, 'Notas',
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
+                )}
+                {iconBtn(linksOpen || links.length > 0, handleToggleLinks, 'Links',
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
                 )}
                 <button
                   type="button"
@@ -278,6 +332,58 @@ export function NuevaTareaModal({ isOpen, defaultListId, availableLists, allList
                     onInput={(e) => { clampNotes(e.currentTarget); setNotesHtml(e.currentTarget.innerHTML); }}
                     className="w-full min-h-[80px] max-h-[160px] overflow-y-auto no-scrollbar p-3 text-[14px] text-[#444] leading-relaxed outline-none border border-[#e4e4ed] rounded-xl [&_h1]:text-[16px] [&_h1]:font-bold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
                   />
+                  <div className="flex justify-end pt-1">
+                    <span className="text-[11px] tabular-nums text-[#b3b3bd] select-none">
+                      {plainNotesLength(notesHtml)}/{NOTES_MAX_LENGTH}
+                    </span>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Links de la tarea */}
+              {linksOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  transition={{ duration: 0.16, ease: 'easeOut' }}
+                  className="overflow-hidden mb-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {links.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {links.map((link, i) => (
+                        <span key={link} className="inline-flex items-center gap-1 max-w-full bg-[#f0edff] text-[#6b5cdb] text-[12px] font-medium pl-2.5 pr-1 py-1 rounded-full">
+                          <span className="truncate max-w-[180px]">{link.replace(/^https?:\/\//, '')}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveLink(i)}
+                            title="Quitar link"
+                            className="w-5 h-5 flex items-center justify-center rounded-full bg-transparent border-none text-[#6b5cdb]/60 cursor-pointer hover:bg-[#e4dcff]"
+                          >
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="url"
+                      value={linkInput}
+                      onChange={(e) => setLinkInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLink(); } }}
+                      placeholder="Pegar URL..."
+                      className="flex-1 bg-[#fafafc] border border-[#e4e4ed] rounded-xl px-3 py-2.5 text-[14px] text-[#333] outline-none focus:border-[#7f70ff] transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddLink}
+                      disabled={!linkInput.trim()}
+                      className="flex-none px-3 py-2.5 rounded-xl bg-[#f0edff] text-[#7f70ff] text-[13px] font-semibold border-none cursor-pointer disabled:opacity-40"
+                    >
+                      Añadir
+                    </button>
+                  </div>
                 </motion.div>
               )}
 
@@ -285,7 +391,7 @@ export function NuevaTareaModal({ isOpen, defaultListId, availableLists, allList
                 <button onClick={onClose} className="flex-1 border-none py-3 rounded-xl text-sm font-semibold cursor-pointer bg-[#f0f0f0] text-[#666] hover:bg-[#e4e4e4] transition-colors">Cancelar</button>
                 <button onClick={submit} disabled={!title.trim() && !(activityOnly && activityId) && !isLinked} className="flex-1 border-none py-3 rounded-xl text-sm font-semibold cursor-pointer bg-[#7f70ff] text-white shadow-[2px_4px_10px_rgba(127,112,255,0.3)] hover:bg-[#6c5dd4] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">{isLinked ? 'Crear referencia' : activityOnly && !title.trim() ? 'Crear actividad' : 'Crear tarea'}</button>
               </div>
-            </div>
+            </motion.div>
 
             {showPicker && (
               <CalendarModal

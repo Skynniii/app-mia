@@ -85,8 +85,8 @@ export const EntryList = memo(function EntryList({ entries, activities, onSelect
         const isExpanded = expandedDays.has(g.date);
         const actGroups = activityGroupsForDay(g.entries);
         return (
-          <div key={g.date} className="bg-white rounded-[24px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] overflow-hidden">
-            <button onClick={() => toggleDay(g.date)} className="w-full flex items-center justify-between px-5 py-3.5 bg-transparent border-none cursor-pointer hover:bg-[#fafafa] transition-colors">
+          <div key={g.date} className="bg-white rounded-[16px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] overflow-hidden">
+            <button onClick={() => toggleDay(g.date)} className="w-full flex items-center justify-between px-4 py-3.5 bg-transparent border-none cursor-pointer hover:bg-[#fafafa] transition-colors">
               <div className="flex items-center gap-2">
                 <p className="text-[14px] font-bold text-[#333] m-0 capitalize">{dayLabel(g.date)}</p>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}><path d="M6 9l6 6 6-6" /></svg>
@@ -94,7 +94,7 @@ export const EntryList = memo(function EntryList({ entries, activities, onSelect
               <span className="text-[13px] font-semibold text-[#999] tabular-nums">{formatElapsed(g.total)}</span>
             </button>
 
-            <div className="px-5 pb-3.5 flex flex-col gap-3">
+            <div className="px-4 pb-3.5 flex flex-col gap-3">
               {actGroups.map((ag) => {
                 const pct = g.total > 0 ? Math.min(100, (ag.total / g.total) * 100) : 0;
                 return (

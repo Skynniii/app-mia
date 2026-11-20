@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useBackHandler } from '../../hooks/useBackHandler';
+import { BackButton, DETAIL_HEADER_TOP } from '../ui/DetailScreen';
 import { MONTHS } from '../../hooks/useCalendarEvents';
 import { isoToDateKey, todayKey } from '../../hooks/useTimeTracker';
 import type { CalendarEvent, Task, TaskList } from '../../types';
@@ -142,17 +143,9 @@ export function CalendarSearch({ open, tasks, events, lists, onClose, onPick }: 
           {/* Cabecera con el campo de búsqueda (deja aire bajo la barra de estado) */}
           <div
             className="shrink-0 px-4 pb-3 flex items-center gap-2 border-b border-[#f0f0f5]"
-            style={{ paddingTop: 'max(env(safe-area-inset-top), 52px)' }}
+            style={{ paddingTop: DETAIL_HEADER_TOP }}
           >
-            <button
-              onClick={onClose}
-              aria-label="Cerrar búsqueda"
-              className="w-9 h-9 rounded-xl bg-[#f5f5f7] flex items-center justify-center border-none cursor-pointer text-[#666] shrink-0"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
-            </button>
+            <BackButton onClick={onClose} label="Cerrar búsqueda" color="#666" />
             <div className="flex-1 flex items-center gap-2 bg-[#f5f5f7] rounded-xl px-3 h-9">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="7" />

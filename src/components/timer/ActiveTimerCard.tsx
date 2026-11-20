@@ -129,7 +129,7 @@ export function ActiveTimerCard(props: ActiveTimerCardProps) {
   const cdDisplay = `${String(cdMin).padStart(2, '0')}:${String(cdSec).padStart(2, '0')}`;
 
   return (
-    <div className="bg-white p-5 rounded-[24px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] flex flex-col items-center gap-4">
+    <div className="bg-white p-4 rounded-[16px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] flex flex-col items-center gap-4">
       <TimerModeSelector mode={mode} onChange={onModeChange} />
 
       {/* ===== RASTREADOR ===== */}

@@ -57,7 +57,9 @@ export function EventDetail({ event, onClose, onEdit, onDelete }: Props) {
                   </IconRow>
                 ) : (
                   <IconRow icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>}>
-                    {formatEventTime(event.start, settings.timeFormat)} – {formatEventTime(event.end, settings.timeFormat)}
+                    {event.allDay
+                      ? 'Todo el día'
+                      : `${formatEventTime(event.start, settings.timeFormat)} – ${formatEventTime(event.end, settings.timeFormat)}`}
                   </IconRow>
                 )}
                 {event.location && (
@@ -72,20 +74,26 @@ export function EventDetail({ event, onClose, onEdit, onDelete }: Props) {
                 )}
               </div>
 
-              <div className="flex gap-3 mt-5">
-                <button
-                  onClick={() => onEdit(event)}
-                  className="flex-1 border-none py-3 rounded-xl text-sm font-semibold cursor-pointer bg-[#f0edff] text-[#7f70ff] hover:bg-[#e4dfff] transition-colors"
-                >
-                  Editar
-                </button>
-                <button
-                  onClick={() => onDelete(event.id)}
-                  className="flex-1 border-none py-3 rounded-xl text-sm font-semibold cursor-pointer bg-[#fff5f5] text-[#ff4d4d] hover:bg-[#ffe8e8] transition-colors"
-                >
-                  Eliminar
-                </button>
-              </div>
+              {event.source === 'google' ? (
+                <p className="text-[12px] text-[#999] mt-5 mb-0 leading-relaxed">
+                  Importado de Google Calendar. Se actualiza solo; para cambiarlo, edítalo en Google Calendar.
+                </p>
+              ) : (
+                <div className="flex gap-3 mt-5">
+                  <button
+                    onClick={() => onEdit(event)}
+                    className="flex-1 border-none py-3 rounded-xl text-sm font-semibold cursor-pointer bg-[#f0edff] text-[#7f70ff] hover:bg-[#e4dfff] transition-colors"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => onDelete(event.id)}
+                    className="flex-1 border-none py-3 rounded-xl text-sm font-semibold cursor-pointer bg-[#fff5f5] text-[#ff4d4d] hover:bg-[#ffe8e8] transition-colors"
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              )}
             </motion.div>
           </div>
         )}

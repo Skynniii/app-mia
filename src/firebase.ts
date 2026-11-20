@@ -5,7 +5,11 @@ import {
   browserLocalPersistence,
   setPersistence,
 } from 'firebase/auth';
-import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyAfQoiYOHUQBDldx2DWAC_aF_Ctc2IgLhc',
@@ -19,7 +23,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 
 // La sesión se guarda en localStorage (en vez de IndexedDB) para que persista
@@ -28,12 +31,19 @@ setPersistence(auth, browserLocalPersistence).catch((err) => {
   console.warn('Firebase Auth persistence: no se pudo aplicar localStorage.', err);
 });
 
-// Persistencia offline nativa de Firestore: los cambios se reflejan al instante
-// y se sincronizan con la nube al recuperar la señal.
-enableIndexedDbPersistence(db).catch((err) => {
-  if (err.code === 'failed-precondition') {
-    console.warn('Firestore persistence: múltiples pestañas abiertas.');
-  } else if (err.code === 'unimplemented') {
-    console.warn('Firestore persistence: no soportado por el navegador.');
-  }
+/**
+ * Firestore con caché persistente (IndexedDB) y multi-pestaña.
+ *
+ * Es la base del sistema de sincronización multidispositivo:
+ * - Lecturas instantáneas desde la caché local: la app abre con los datos ya
+ *   descargados, sin esperar a la red.
+ * - Cada listener guarda su punto de reanudación, así al reabrir la app solo
+ *   se descargan los documentos que cambiaron (nunca la colección completa).
+ * - Las escrituras hechas sin conexión quedan en cola y se suben solas al
+ *   recuperar la señal, en orden (la última escritura gana).
+ * - Los borrados remotos desaparecen también de la caché local (no quedan
+ *   tareas "fantasma" en otros navegadores).
+ */
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
 });

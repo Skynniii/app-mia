@@ -29,12 +29,15 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
 ## Cabecera de sección (UI)
 
 - Todas las secciones usan `src/components/ui/SectionHeader.tsx`, con exactamente
-  la misma posición/márgenes que la cabecera de Tasks (safe-area top + `px-5 pt-3`,
-  y `TopBar` con `px-4 py-2.5`). Para mover el título, cámbialo ahí y no en cada
-  sección. El color de fondo es propio de cada sección y llega por la prop
-  `background` (Tasks blanco, el resto `#f7f6f9`).
+  la misma posición/márgenes que la cabecera de Tasks (safe-area top + `px-3` sin
+  `pt`, y `TopBar` con `px-1 py-1.5`). Para mover el título, cámbialo ahí y no en
+  cada sección. El color de fondo es propio de cada sección y llega por la prop
+  `background` (Tasks, Tracker, Timer y Calendario usan blanco; el resto `#f7f6f9`).
 - La cabecera va **fuera** de la zona scrolleable en todas las secciones
   (`flex flex-col` + contenedor interno `overflow-y-auto`), por eso queda fija.
+- Tracker y Timer comparten estilo de tarjetas: contenedor `px-2` (mismo ancho que
+  las listas de Tasks), tarjetas `rounded-[16px]`, padding interno `p-4` y filas
+  `px-4`. Para nuevas tarjetas de esas secciones, usa esas mismas clases.
 
 ## Barra de estado en Android (Capacitor)
 
@@ -67,6 +70,15 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
   interior del modal o el botón Notas cuando la nota está vacía (con contenido
   solo lo cierra el botón); el editor de notas y la barra de formato hacen
   `stopPropagation` para no cerrarlo al escribir.
+- `NuevaTareaModal` entra deslizándose desde abajo (`y: '100%' → 0`, 240 ms) y
+  enfoca el título a los 240 ms: el teclado sube después y empuja el modal.
+  No vuelvas a usar `autoFocus`: enfocaba antes de entrar y el modal parpadeaba.
+- El panel solo compensa `bottom` con el `visualViewport` cuando el layout **no**
+  cambia (teclado superpuesto, p. ej. iOS) y tras dos lecturas estables. Con
+  `resizes-content` el navegador ya arrastra el panel; compensar además duplicaba
+  el desplazamiento y lo lanzaba arriba durante la animación del teclado.
+- En `ListaTareasCard` la pulsación larga solo activa el modo reordenar: ninguna
+  tarea entra en arrastre sin tomarla de sus barras (`onDragPointerDown` del asa).
 
 ## Botón atrás de Android
 
@@ -107,16 +119,19 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
 
 ## Safe areas (edge-to-edge)
 
-- Las pantallas de pantalla completa que NO usan `SectionHeader` deben añadir
-  `paddingTop: 'max(env(safe-area-inset-top), 12px)'` en su cabecera y
-  `paddingBottom: 'max(env(safe-area-inset-bottom), ...)'` en su barra inferior.
-  Las que ya lo tienen: `TaskDetailView`, `SettingsPage`, `AccountPage`,
-  `FocusScreen`, `SessionDetailModal`, `ActivityDetailModal`.
+- Las pantallas de pantalla completa que NO usan `SectionHeader` usan
+  `DETAIL_HEADER_TOP` (`max(env(safe-area-inset-top), 20px)`) de
+  `src/components/ui/DetailScreen.tsx` en su cabecera —el mismo nivel que el
+  detalle de actividad del Tracker— y `paddingBottom: 'max(env(safe-area-inset-bottom), ...)'`
+  en su barra inferior. El botón de atrás es `BackButton` del mismo archivo
+  (`w-10 h-10`): no lo reimplementes. Lo usan `TaskDetailView`, `SettingsPage`,
+  `AccountPage`, `FocusScreen`, `SessionDetailModal`, `ActivityDetailModal`,
+  `CalendarSearch`, `GoogleCalendarModal` y `ActivitiesPage`.
 - `NavegacionBar` usa `height: calc(70px + env(safe-area-inset-bottom))` con
   `paddingBottom: env(safe-area-inset-bottom)` para no chocar con los botones
   del sistema en dispositivos con navegación por botones (no gestos).
-- `SectionHeader` usa `max(env(safe-area-inset-top), 12px)` + `pt-2` (reducido
-  para dejar más espacio para el contenido de la sección).
+- `SectionHeader` usa `max(env(safe-area-inset-top), 8px)` sin `pt` extra: la
+  cabecera principal va arriba y pegada a los bordes (`px-3` + `px-1` del `TopBar`).
 
 ## Foto de perfil
 
@@ -141,13 +156,48 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
   (`linkedTaskId`) con título `Avanzar en: <título>` vía `addTaskWithData`.
 - Solo aparece en tareas no completadas, no vinculadas y no de actividad pura.
 
+## Sincronización multidispositivo
+
+- Toda la sincronización la resuelve Firestore; **no hay motor propio**. `src/firebase.ts`
+  usa `initializeFirestore` con `persistentLocalCache` +
+  `persistentMultipleTabManager`: caché persistente en IndexedDB, lecturas
+  instantáneas sin red y multi-pestaña sin el aviso `failed-precondition`.
+- `src/hooks/collectionStore.ts` mantiene **una sola suscripción por usuario y
+  colección**, compartida por todos los componentes que la usan. Al reabrir la
+  app cada listener reanuda desde su último punto, así que solo se descargan los
+  documentos que cambiaron (nunca la colección completa).
+- `useFirestoreCollection(uid, coleccion)` es la única vía de lectura/escritura de
+  las subcolecciones (`tasks`, `taskLists`, `activities`, `timeSessions`,
+  `calendarEvents`). Devuelve `items`, `loading` (primer snapshot, normalmente de
+  caché) y `ready` (primer snapshot **del servidor**: úsalo para sembrar datos).
+- Escrituras: directas a Firestore (`add`/`set`/`update`/`remove`/`batchSet`/
+  `batchRemove`). Sin conexión quedan en cola y se suben solas al recuperar la
+  señal, en orden: **el último cambio gana**. `update()` omite escrituras sin
+  cambios y, si el documento se borró en otro dispositivo, **no lo resucita**.
+- Los borrados se propagan solos: al desaparecer del servidor desaparecen de la
+  caché local de todos los dispositivos (no quedan tareas fantasma).
+- `incrementTaskTime()` usa `increment()` (atómico): dos dispositivos que suman
+  tiempo a la vez no se pisan.
+- `useUserStorage` (documento raíz `users/{uid}`: ajustes, cronómetro en curso,
+  calendarios vinculados…) escucha con `onSnapshot` en tiempo real y escribe solo
+  las claves cambiadas con `merge`.
+- Siembra de datos de ejemplo: solo cuando `ready` llega vacío y una vez por
+  cuenta/dispositivo (claves `lumina-seeded:{uid}` y `lumina-activities-seeded:{uid}`
+  en localStorage).
+- `SyncStatusPill` muestra "Sincronizando…" o "Sin conexión" solo cuando hay
+  escrituras pendientes o no hay red; alimentado por `src/hooks/syncStatus.ts`.
+- Al cerrar sesión `resetCollectionStores()` cierra todas las suscripciones. Si
+  añades una colección nueva, no crees listeners propios: usa el hook.
+
 ## Quirks
 
 - `vite.config.ts` sets `server.allowedHosts: true`; the compose file also
   passes `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS` through for robustness.
-- Firestore offline persistence (`enableIndexedDbPersistence`) logs a
-  `failed-precondition` warning when the app is opened in several tabs — that is
-  expected, not a bug.
+- La caché persistente de Firestore se comparte entre pestañas
+  (`persistentMultipleTabManager`), así que abrir la app en varias pestañas ya no
+  rompe la persistencia.
+- El check de una tarea-actividad en curso lleva a la pantalla **Focus**
+  (`requestFocusView()` en `src/shared/focusRequest.ts`), no a la vista de Timer.
 - Firebase Auth sign-in is required for most screens; signed-out previews show
   the login screen only.
 

@@ -5,8 +5,9 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { SettingsProvider, useSettings } from './context/SettingsContext';
 import { DeviceCapabilityProvider } from './context/DeviceCapabilityContext';
 import { migrateToSubcollections } from './hooks/useFirestoreCollection';
-import { initSyncEngine, stopSyncEngine } from './hooks/syncEngine';
+import { resetCollectionStores } from './hooks/collectionStore';
 import { NavegacionBar } from './components/navegacion/NavegacionBar';
+import { SyncStatusPill } from './components/ui/SyncStatusPill';
 import { LoginScreen } from './components/ui/LoginScreen';
 import { initBackButton } from './utils/backButton';
 
@@ -42,15 +43,19 @@ function AppContent() {
   // salir de la aplicación directamente.
   useEffect(() => { initBackButton(); }, []);
 
-  // Migración one-time + inicialización del motor de sincronización offline-first.
+  // Sincronización: la resuelve Firestore (caché persistente + listeners en
+  // tiempo real). Aquí solo se hace la migración one-time del formato antiguo
+  // y se cierran las suscripciones al cerrar sesión.
   useEffect(() => {
-    if (user?.uid) {
-      migrateToSubcollections(user.uid)
-        .catch(console.error)
-        .finally(() => initSyncEngine(user.uid));
-    } else {
-      stopSyncEngine();
+    if (!user?.uid) {
+      resetCollectionStores();
+      return;
     }
+    const doneKey = `lumina-migrated:${user.uid}`;
+    if (localStorage.getItem(doneKey)) return;
+    migrateToSubcollections(user.uid)
+      .then(() => localStorage.setItem(doneKey, '1'))
+      .catch(console.error);
   }, [user?.uid]);
 
   // Aplica la sección inicial definida en configuración mientras el usuario
@@ -63,6 +68,14 @@ function AppContent() {
     userNavigated.current = true;
     setView(v);
   };
+
+  // Navegación desde componentes profundos (p. ej. el check de una
+  // tarea-actividad en curso, que lleva a Timer).
+  useEffect(() => {
+    const handler = (e: Event) => handleViewChange((e as CustomEvent<ViewType>).detail);
+    window.addEventListener('app-navigate', handler);
+    return () => window.removeEventListener('app-navigate', handler);
+  }, []);
 
   if (authLoading) {
     return (
@@ -88,6 +101,8 @@ function AppContent() {
           </Suspense>
         </motion.div>
       </AnimatePresence>
+
+      <SyncStatusPill />
 
       <NavegacionBar activeView={view} onViewChange={handleViewChange} onAdd={() => window.dispatchEvent(new CustomEvent('app-add'))} />
 

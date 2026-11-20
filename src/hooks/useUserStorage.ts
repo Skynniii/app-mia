@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
+import { reportPendingWrites } from './syncStatus';
 
 // Claves de datos locales que se migran al documento de Firestore en el primer inicio de sesión.
 // Solo se guardan en el documento raíz users/{uid}; el resto vive en subcolecciones.
@@ -31,20 +32,24 @@ function clean<T>(obj: T): T {
 
 type Listener = (value: unknown) => void;
 
+const PENDING_KEY = 'root';
+
 /**
  * Almacén por usuario: un ÚNICO documento `users/{uid}` con toda la data.
- * Usa `onSnapshot` para sincronización en TIEMPO REAL entre dispositivos:
- * cualquier cambio remoto (otro dispositivo) se refleja al instante aquí.
- * Las escrituras locales se aplican optimistamente y se persisten con un
- * pequeño debounce; mientras una clave está "sucia" (pendiente de escribir),
- * no se sobrescribe con datos remotos para no perder el cambio local.
+ *
+ * Sincronización en tiempo real vía `onSnapshot`: un cambio en otro
+ * dispositivo se aplica aquí al instante. Las escrituras son por clave
+ * (`merge`) y con debounce, así que pulsar un ajuste no reescribe el
+ * documento entero. Mientras una clave tiene una escritura sin confirmar no
+ * se pisa con datos remotos: el último cambio enviado gana.
  */
 class UserDataStore {
   uid: string | null = null;
   data: Record<string, unknown> = {};
   loading: Promise<void> | null = null;
   writeTimer: ReturnType<typeof setTimeout> | null = null;
-  dirtyKeys = new Set<string>();
+  /** Claves con escritura pendiente → valor (JSON) que se envió. */
+  dirty = new Map<string, string>();
   listeners = new Map<string, Set<Listener>>();
   unsub: (() => void) | null = null;
 
@@ -59,7 +64,9 @@ class UserDataStore {
       const finishFirst = () => { if (!firstDone) { firstDone = true; resolve(); } };
       this.unsub = onSnapshot(
         ref,
+        { includeMetadataChanges: true },
         async (snap) => {
+          reportPendingWrites(PENDING_KEY, snap.metadata.hasPendingWrites);
           if (snap.exists()) {
             this.mergeData(snap.data() as Record<string, unknown>);
           } else if (!firstDone) {
@@ -77,13 +84,13 @@ class UserDataStore {
             }
             if (Object.keys(migrated).length) {
               this.data = migrated;
-              this.dirtyKeys = new Set(Object.keys(migrated));
+              this.dirty = new Map(Object.keys(migrated).map((k) => [k, JSON.stringify(migrated[k])]));
               try {
                 await setDoc(ref, clean(migrated), { merge: true });
               } catch (e) {
                 console.error('Firestore migration error:', e);
               }
-              this.dirtyKeys.clear();
+              this.dirty.clear();
             }
           }
           finishFirst();
@@ -97,17 +104,23 @@ class UserDataStore {
     return this.loading;
   }
 
-  // Fusiona los datos entrantes del snapshot: notifica a los suscriptores de
-  // las claves que cambiaron, sin pisar las claves con escritura pendiente.
+  // Aplica los datos del snapshot: notifica solo las claves que cambiaron y no
+  // pisa las que tienen una escritura pendiente.
   private mergeData(incoming: Record<string, unknown>) {
     for (const key of Object.keys(incoming)) {
-      if (this.dirtyKeys.has(key)) continue;
+      if (this.dirty.has(key)) continue;
       const prev = this.data[key];
       const next = incoming[key];
       if (JSON.stringify(prev) !== JSON.stringify(next)) {
         this.data[key] = next;
         this.listeners.get(key)?.forEach((cb) => cb(next));
       }
+    }
+    // Claves que se borraron en otro dispositivo.
+    for (const key of this.listeners.keys()) {
+      if (key in incoming || !(key in this.data) || this.dirty.has(key)) continue;
+      delete this.data[key];
+      this.listeners.get(key)?.forEach((cb) => cb(undefined));
     }
   }
 
@@ -117,7 +130,7 @@ class UserDataStore {
 
   set(key: string, value: unknown) {
     this.data[key] = value;
-    this.dirtyKeys.add(key);
+    this.dirty.set(key, JSON.stringify(value));
     this._scheduleWrite();
     // Notifica a los suscriptores locales inmediatamente (no solo en el snapshot remoto)
     this.listeners.get(key)?.forEach((cb) => cb(value));
@@ -125,19 +138,28 @@ class UserDataStore {
 
   private _scheduleWrite() {
     if (this.writeTimer) clearTimeout(this.writeTimer);
-    this.writeTimer = setTimeout(async () => {
-      if (!this.uid) return;
+    this.writeTimer = setTimeout(() => {
       this.writeTimer = null;
-      try {
-        await setDoc(doc(db, 'users', this.uid), clean(this.data), { merge: true });
-        // Tras persistir, las claves dejan de estar sucias: futuros snapshots
-        // remotos podrán actualizarlas (sync cross-device).
-        this.dirtyKeys.clear();
-      } catch (e) {
-        console.error('Firestore write error:', e);
-        this.dirtyKeys.clear();
-      }
+      void this.flush();
     }, 400);
+  }
+
+  /** Envía SOLO las claves pendientes, con merge, en una única escritura. */
+  private async flush() {
+    if (!this.uid || this.dirty.size === 0) return;
+    const sent = [...this.dirty.entries()];
+    const payload: Record<string, unknown> = {};
+    for (const [key] of sent) payload[key] = this.data[key];
+    try {
+      await setDoc(doc(db, 'users', this.uid), clean(payload), { merge: true });
+    } catch (e) {
+      console.error('Firestore write error:', e);
+      return; // Siguen pendientes: se reintenta con la próxima escritura.
+    }
+    for (const [key, json] of sent) {
+      if (this.dirty.get(key) === json) this.dirty.delete(key);
+    }
+    if (this.dirty.size > 0) this._scheduleWrite();
   }
 
   subscribe(key: string, cb: Listener) {
@@ -157,7 +179,7 @@ class UserDataStore {
       clearTimeout(this.writeTimer);
       this.writeTimer = null;
     }
-    this.dirtyKeys.clear();
+    this.dirty.clear();
     this.listeners.clear();
   }
 
@@ -202,6 +224,7 @@ export function useUserStorage<T>(key: string, initialValue: T) {
     // remotamente (otro dispositivo), sin recargar la página.
     const unsub = store.subscribe(key, (next) => {
       setValueInternal((prev) => {
+        if (next === undefined) return initialRef.current;
         if (prev === next) return prev;
         return JSON.stringify(prev) === JSON.stringify(next) ? prev : (next as T);
       });

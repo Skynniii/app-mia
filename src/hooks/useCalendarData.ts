@@ -4,7 +4,7 @@ import { useTasks } from './useTasks';
 import { useCalendarEvents, dateKey, timeToMinutes, MONTHS } from './useCalendarEvents';
 import { useFirestoreCollection } from './useFirestoreCollection';
 import { isoToDateKey, todayKey } from './useTimeTracker';
-import { HOLIDAY_COLOR } from '../utils/holidays';
+import { HOLIDAY_COLOR, setExternalHolidays } from '../utils/holidays';
 import type { Activity, CalendarEvent, Task, TaskList, TimeSession } from '../types';
 
 /** Capas de información que el calendario puede mostrar. */
@@ -254,23 +254,36 @@ export function useCalendarData() {
     }
 
     const baseYear = new Date().getFullYear();
+    // Festivos importados de Google: alimentan el mismo mecanismo que calcula
+    // los festivos locales (`holidayName`), así salen en todas las vistas sin
+    // duplicarse con los de Colombia.
+    const importedHolidays = new Map<string, string>();
     for (const e of events) {
-      // Cumpleaños: mismo día y mes en los años del rango visible del calendario (±5 años)
-      if (e.birthday) {
+      if (e.holiday) importedHolidays.set(e.date, e.title);
+    }
+    setExternalHolidays(importedHolidays);
+
+    for (const e of events) {
+      if (e.holiday) continue;
+      // Cumpleaños y series anuales: mismo día y mes en todo el rango visible (±5 años)
+      if (e.birthday || e.yearly) {
         const [, mm, dd] = e.date.split('-');
         for (let y = baseYear - 5; y <= baseYear + 5; y++) {
           out.push({
             id: `b-${e.id}-${y}`, kind: 'event', date: `${y}-${mm}-${dd}`,
-            title: e.title, subtitle: 'Cumpleaños', color: e.color, accent: e.color,
-            event: e, birthday: true, order: -1,
+            title: e.title, subtitle: e.birthday ? 'Cumpleaños' : e.location,
+            color: e.color, accent: e.color,
+            event: e, birthday: !!e.birthday, order: -1,
           });
         }
         continue;
       }
       out.push({
         id: `e-${e.id}`, kind: 'event', date: e.date,
-        startMin: timeToMinutes(e.start), endMin: timeToMinutes(e.end),
+        startMin: e.allDay ? undefined : timeToMinutes(e.start),
+        endMin: e.allDay ? undefined : timeToMinutes(e.end),
         title: e.title, subtitle: e.location, color: e.color, accent: e.color, event: e,
+        order: e.allDay ? -1 : undefined,
       });
     }
 

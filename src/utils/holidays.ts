@@ -89,8 +89,21 @@ export function holidaysOfYear(year: number): Map<string, string> {
   return map;
 }
 
+/**
+ * Festivos que llegan de fuera (Google Calendar): `YYYY-MM-DD` → nombre.
+ * Los usa `useCalendarData` al cargar los eventos importados, para que todas
+ * las vistas (rejilla, agenda, resumen) los pinten como un festivo más.
+ */
+let externalHolidays = new Map<string, string>();
+
+export function setExternalHolidays(map: Map<string, string>): void {
+  externalHolidays = map;
+}
+
 /** Nombre del festivo de esa fecha (`YYYY-MM-DD`) o `null`. */
 export function holidayName(key: string): string | null {
+  const imported = externalHolidays.get(key);
+  if (imported) return imported;
   const year = Number(key.slice(0, 4));
   if (!year) return null;
   return holidaysOfYear(year).get(key) ?? null;

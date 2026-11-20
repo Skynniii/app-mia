@@ -106,9 +106,9 @@ export function ActivityTrendStats({ sessions, activity }: Props) {
       </div>
 
       {/* Stats en lista */}
-      <div className="bg-white rounded-[24px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] overflow-hidden">
+      <div className="bg-white rounded-[16px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] overflow-hidden">
         {stats.map((s, i) => (
-          <div key={i} className={`flex items-center justify-between px-5 py-3.5 ${i > 0 ? 'border-t border-[#f2f2f2]' : ''}`}>
+          <div key={i} className={`flex items-center justify-between px-4 py-3.5 ${i > 0 ? 'border-t border-[#f2f2f2]' : ''}`}>
             <div>
               <p className="text-[15px] font-semibold text-[#333] m-0">{s.label}</p>
               {s.sub && <p className="text-[11px] text-[#999] m-0 mt-0.5">{s.sub}</p>}
@@ -119,7 +119,7 @@ export function ActivityTrendStats({ sessions, activity }: Props) {
       </div>
 
       {/* Gráfico Progreso */}
-      <div className="bg-white p-4 rounded-[20px] shadow-[4px_4px_10px_#e6e6e6,-4px_-4px_10px_#ffffff]">
+      <div className="bg-white p-4 rounded-[16px] shadow-[4px_4px_10px_#e6e6e6,-4px_-4px_10px_#ffffff]">
         <p className="text-[12px] font-semibold text-[#999] uppercase tracking-wide m-0 mb-3">Progreso</p>
         <div className="flex" style={{ height: '150px' }}>
           {/* Eje Y */}

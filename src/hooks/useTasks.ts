@@ -3,7 +3,6 @@ import { deleteField } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useFirestoreCollection, incrementTaskTime } from './useFirestoreCollection';
 import { useSettings } from '../context/SettingsContext';
-import { getMeta, subscribeLocal } from './localDB';
 import type { Task, TaskList, RepeatConfig, SubTask, Activity } from '../types';
 
 function calculateNextDate(currentDate: string | undefined, repeat: RepeatConfig): string | undefined {
@@ -54,32 +53,23 @@ export function useTasks() {
 
   const listsColl = useFirestoreCollection<TaskList>(uid, 'taskLists');
   const tasksColl = useFirestoreCollection<Task>(uid, 'tasks');
-  const { items: lists, loading: listsLoading, set: listSet, batchSet: listBatchSet } = listsColl;
-  const { items: tasks, loading: tasksLoading, set: taskSet, update: taskUpdate, batchSet: taskBatchSet, batchRemove: taskBatchRemove } = tasksColl;
+  const { items: lists, loading: listsLoading, ready: listsReady, set: listSet, batchSet: listBatchSet } = listsColl;
+  const { items: tasks, loading: tasksLoading, ready: tasksReady, set: taskSet, update: taskUpdate, batchSet: taskBatchSet, batchRemove: taskBatchRemove } = tasksColl;
 
-  // Esperar a que el primer sync con Firestore termine antes de sembrar datos
-  const [syncReady, setSyncReady] = useState(false);
+  // Semilla para usuarios nuevos: solo cuando el primer snapshot del SERVIDOR
+  // llega vacío, y una sola vez por cuenta en este dispositivo (si más tarde se
+  // borran todas las tareas no se vuelven a crear).
   useEffect(() => {
-    if (!uid) return;
-    let mounted = true;
-    const check = () => getMeta<boolean>('initialSyncDone').then((done) => {
-      if (mounted && done) setSyncReady(true);
-    });
-    check();
-    const unsub = subscribeLocal('_syncReady', check);
-    return () => { mounted = false; unsub(); };
-  }, [uid]);
-
-  // Semilla para usuarios nuevos (sin datos en Firestore ni en local tras el sync)
-  useEffect(() => {
-    if (!uid || !syncReady || listsLoading || tasksLoading) return;
-    if (lists.length === 0 && tasks.length === 0) {
-      SEED_LISTS.forEach((l) => listSet(l.id, { name: l.name, position: l.position }));
-      SEED_TASKS.forEach((t) => taskSet(t.id, {
-        listId: t.listId, title: t.title, completed: t.completed, isImportant: t.isImportant, createdAt: t.createdAt, subtasks: t.subtasks,
-      }));
-    }
-  }, [uid, syncReady, listsLoading, tasksLoading, lists, tasks, listSet, taskSet]);
+    if (!uid || !listsReady || !tasksReady) return;
+    if (lists.length > 0 || tasks.length > 0) return;
+    const seedKey = `lumina-seeded:${uid}`;
+    if (localStorage.getItem(seedKey)) return;
+    localStorage.setItem(seedKey, '1');
+    SEED_LISTS.forEach((l) => listSet(l.id, { name: l.name, position: l.position }));
+    SEED_TASKS.forEach((t) => taskSet(t.id, {
+      listId: t.listId, title: t.title, completed: t.completed, isImportant: t.isImportant, createdAt: t.createdAt, subtasks: t.subtasks,
+    }));
+  }, [uid, listsReady, tasksReady, lists, tasks, listSet, taskSet]);
 
   // Limpieza de campos de fecha corruptos (objetos enviados por error a Firestore)
   const cleanedTasksRef = useRef<Set<string>>(new Set());
@@ -178,7 +168,7 @@ export function useTasks() {
     });
   }, [tasksColl, closeModal]);
 
-  const addTaskWithData = useCallback((listId: string, data: { title: string; notes?: string; scheduledDate?: string; scheduledTime?: string; dueDate?: string; isImportant?: boolean; repeat?: RepeatConfig; activityId?: string; linkedTaskId?: string; isActivityOnly?: boolean }) => {
+  const addTaskWithData = useCallback((listId: string, data: { title: string; notes?: string; links?: string[]; scheduledDate?: string; scheduledTime?: string; dueDate?: string; isImportant?: boolean; repeat?: RepeatConfig; activityId?: string; linkedTaskId?: string; isActivityOnly?: boolean }) => {
     const trimmed = (data.title || '').trim();
     if (!trimmed && !data.isActivityOnly) return;
     // Referencia: crear solo un puntero ligero, sin copiar datos ni mover de lista
@@ -195,7 +185,8 @@ export function useTasks() {
     // La tarea se queda en la lista que el usuario seleccionó
     tasksColl.add({
       listId, title: trimmed, completed: false, isImportant: !!data.isImportant, createdAt: new Date().toISOString(),
-      notes: data.notes || undefined, scheduledDate: data.scheduledDate || undefined, scheduledTime: data.scheduledTime || undefined,
+      notes: data.notes || undefined, links: data.links?.length ? data.links : undefined,
+      scheduledDate: data.scheduledDate || undefined, scheduledTime: data.scheduledTime || undefined,
       dueDate: data.dueDate || undefined, repeat: data.repeat, activityId: resolvedActivityId,
       isActivityOnly: data.isActivityOnly || undefined,
     });

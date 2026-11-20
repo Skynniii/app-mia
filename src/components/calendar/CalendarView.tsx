@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
+import { useGoogleCalendar } from '../../hooks/useGoogleCalendar';
 import { weekStartIndex } from '../../utils/calendarDates';
 import { MONTHS, dateKey } from '../../hooks/useCalendarEvents';
 import { incrementTaskTime } from '../../hooks/useFirestoreCollection';
@@ -51,6 +52,8 @@ export function CalendarView({ onMenuClick, onOpenAccount, onNavigate }: Props) 
   const uid = user?.uid ?? null;
   const { settings } = useSettings();
   const data = useCalendarData();
+  // Mantiene al día los calendarios de Google vinculados (si toca sincronizar).
+  useGoogleCalendar();
   const { taskApi, sessionApi, eventsApi, itemsByDate, lists: rawLists, tasks, sessions, activities, events } = data;
   const lists = useMemo(() => sortListsForDisplay(rawLists), [rawLists]);
 

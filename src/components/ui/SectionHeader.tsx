@@ -19,9 +19,9 @@ export function SectionHeader({ title, onMenuClick, onOpenAccount, background = 
   return (
     <div
       className={`shrink-0 w-full box-border ${className}`}
-      style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)', background }}
+      style={{ paddingTop: 'max(env(safe-area-inset-top), 8px)', background }}
     >
-      <div className="px-5 pt-2">
+      <div className="px-3">
         <TopBar title={title} onMenuClick={onMenuClick} onOpenAccount={onOpenAccount} />
       </div>
     </div>

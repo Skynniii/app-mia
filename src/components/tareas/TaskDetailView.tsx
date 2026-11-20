@@ -12,11 +12,12 @@ import { formatElapsed, dayLabel, isoToDateKey } from '../../hooks/useTimeTracke
 import { setPendingTimerTask } from '../../shared/pendingTimerTask';
 import { Sparkles } from './Sparkles';
 import { CalendarModal } from './CalendarModal';
-import { clampNotes, limitBeforeInput } from '../../utils/notesLimit';
+import { clampNotes, limitBeforeInput, NOTES_MAX_LENGTH } from '../../utils/notesLimit';
 import { screenTransition } from '../../utils/motion';
 import { DatePickerModal } from './DatePickerModal';
 import { ActivityPicker } from '../timer/ActivityPicker';
 import { LinkPreview, normalizeUrl } from './LinkPreview';
+import { BackButton, DETAIL_HEADER_TOP } from '../ui/DetailScreen';
 
 interface Props {
   task: Task;
@@ -50,6 +51,8 @@ export function TaskDetailView({ task, lists, allTasks, onBack, onToggle, onUpda
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [notesExpanded, setNotesExpanded] = useState(() => !!displayNotes?.replace(/<[^>]*>/g, '').trim());
+  /** Caracteres escritos en las notas, para el contador del límite. */
+  const [notesCount, setNotesCount] = useState(() => (displayNotes ?? '').replace(/<[^>]*>/g, '').length);
   const [progressExpanded, setProgressExpanded] = useState(false);
   const [titleValue, setTitleValue] = useState(task.title);
   const [linksExpanded, setLinksExpanded] = useState(false);
@@ -156,6 +159,7 @@ export function TaskDetailView({ task, lists, allTasks, onBack, onToggle, onUpda
     const el = notesEditRef.current;
     if (notesExpanded && el) {
       el.innerHTML = displayNotes || '';
+      setNotesCount((el.textContent ?? '').length);
       const isUserToggle = !wasExpanded.current;
       wasExpanded.current = true;
       if (!isCompleted && isUserToggle) {
@@ -232,6 +236,7 @@ export function TaskDetailView({ task, lists, allTasks, onBack, onToggle, onUpda
 
   const handleNotesInput = (e: React.FormEvent<HTMLDivElement>) => {
     clampNotes(e.currentTarget);
+    setNotesCount((e.currentTarget.textContent ?? '').length);
     handleSyncedUpdate(task.id, { notes: e.currentTarget.innerHTML });
   };
 
@@ -307,13 +312,8 @@ export function TaskDetailView({ task, lists, allTasks, onBack, onToggle, onUpda
       className="absolute left-0 right-0 top-0 bottom-0 z-[1000] bg-white flex flex-col"
     >
       {/* Header: back + star + list selector */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#f0f0f5] shrink-0" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-        <button onClick={onBack} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors active:scale-90">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12" />
-            <polyline points="12 19 5 12 12 5" />
-          </svg>
-        </button>
+      <div className="flex items-center justify-between px-4 pb-3 border-b border-[#f0f0f5] shrink-0" style={{ paddingTop: DETAIL_HEADER_TOP }}>
+        <BackButton onClick={onBack} />
 
         <div className="flex items-center gap-2">
           {/* Estrella importante */}
@@ -418,8 +418,13 @@ export function TaskDetailView({ task, lists, allTasks, onBack, onToggle, onUpda
                     suppressContentEditableWarning
                     onInput={handleNotesInput}
                     onBeforeInput={limitBeforeInput}
-                    className="w-full min-h-[100px] pb-4 pt-1 outline-none text-[15px] text-[#444] leading-relaxed [&_h1]:text-[18px] [&_h1]:font-bold [&_h1]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                    className="w-full min-h-[100px] pb-1 pt-1 outline-none text-[15px] text-[#444] leading-relaxed [&_h1]:text-[18px] [&_h1]:font-bold [&_h1]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
                   />
+                  <div className="flex justify-end pb-2">
+                    <span className="text-[11px] tabular-nums text-[#b3b3bd] select-none">
+                      {notesCount}/{NOTES_MAX_LENGTH}
+                    </span>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

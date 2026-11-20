@@ -8,6 +8,7 @@ import { useFirestoreCollection, incrementTaskTime } from '../../hooks/useFirest
 import { useCountdownTimer, type TimerMode } from '../../hooks/useCountdownTimer';
 import { useUserStorage } from '../../hooks/useUserStorage';
 import { setPendingTimerTask, getPendingTimerTask, clearPendingTimerTask } from '../../shared/pendingTimerTask';
+import { subscribeFocusRequest } from '../../shared/focusRequest';
 import { sortListsForDisplay } from '../../utils/listOrder';
 import { SectionHeader } from '../ui/SectionHeader';
 import { TodaySummary } from './TodaySummary';
@@ -53,6 +54,10 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
     window.addEventListener('app-add', addHandler);
     return () => window.removeEventListener('app-add', addHandler);
   }, [tracker.setDraft]);
+
+  // Abrir la pantalla Focus desde otro punto de la app (por ejemplo, el check
+  // de una tarea-actividad en curso en la lista de Tasks).
+  useEffect(() => subscribeFocusRequest(() => setShowFocus(true)), []);
 
   // Manejar tarea pendiente (iniciar timer desde TaskDetailView o tarea-actividad)
   useEffect(() => {
@@ -181,9 +186,9 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
   return (
     <>
       <section className="absolute top-0 left-0 w-full h-full flex flex-col">
-        <SectionHeader title="Timer" onMenuClick={onMenuClick} onOpenAccount={onOpenAccount} background="#f7f6f9" className="z-50" />
+        <SectionHeader title="Timer" onMenuClick={onMenuClick} onOpenAccount={onOpenAccount} background="#FFFFFF" className="z-50" />
 
-        <div className="flex-1 overflow-y-auto no-scrollbar px-5 pb-[110px]">
+        <div className="flex-1 overflow-y-auto no-scrollbar px-2 pb-[110px]">
           <div className="flex flex-col gap-5 mt-3">
             <TodaySummary
               entries={tracker.sessions}

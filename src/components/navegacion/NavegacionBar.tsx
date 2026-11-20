@@ -56,7 +56,7 @@ export function NavegacionBar({ activeView, onViewChange, onAdd }: Props) {
         {active && (
           <motion.span
             layoutId="nav-pill"
-            className="absolute inset-0 bg-[#f0edff] rounded-2xl -z-10"
+            className="absolute inset-0 bg-[#f0edff] rounded-2xl"
             transition={{ duration: 0.2, ease: 'easeOut' }}
           />
         )}
@@ -74,7 +74,7 @@ export function NavegacionBar({ activeView, onViewChange, onAdd }: Props) {
       {/* Botón + incrustado, sobresale del borde superior */}
       <button
         onClick={() => { hapticMedium(); onAdd(); }}
-        className="relative -mt-[32px] w-[56px] h-[56px] rounded-full bg-gradient-to-br from-[#7f70ff] to-[#9d8aff] border-none cursor-pointer flex items-center justify-center shadow-[0_4px_14px_rgba(127,112,255,0.4)] shrink-0 active:scale-[0.88] transition-transform"
+        className="relative z-20 -mt-[32px] w-[56px] h-[56px] rounded-full bg-gradient-to-br from-[#7f70ff] to-[#9d8aff] border-none cursor-pointer flex items-center justify-center shadow-[0_4px_14px_rgba(127,112,255,0.4)] shrink-0 active:scale-[0.88] transition-transform"
       >
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
           <line x1="12" y1="5" x2="12" y2="19" />

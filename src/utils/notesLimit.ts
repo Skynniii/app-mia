@@ -21,6 +21,11 @@ export function clampNotes(el: HTMLElement, max = NOTES_MAX_LENGTH): boolean {
   return true;
 }
 
+/** Longitud del texto plano de un HTML de notas (para el contador de caracteres). */
+export function plainNotesLength(html?: string): number {
+  return (html ?? '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').length;
+}
+
 /** Bloquea teclear o pegar cuando el editor ya llegó al límite. */
 export function limitBeforeInput(e: FormEvent<HTMLElement>, max = NOTES_MAX_LENGTH) {
   const native = e.nativeEvent as InputEvent;

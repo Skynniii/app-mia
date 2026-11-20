@@ -1,7 +1,8 @@
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 import type { TimeSession } from '../types';
 import type { RunningTimer, TrackerDraft } from '../hooks/useTimeTracker';
-import { incrementTaskTime } from '../hooks/useFirestoreCollection';
-import { putLocal, addOutbox, notifyLocal, deleteLocal } from '../hooks/localDB';
+import { incrementTaskTime, clean } from '../hooks/useFirestoreCollection';
 
 /** Segundos acumulados del cronómetro en curso. */
 export function runningDuration(running: RunningTimer, end = Date.now()): number {
@@ -9,9 +10,10 @@ export function runningDuration(running: RunningTimer, end = Date.now()): number
 }
 
 /**
- * Guarda la sesión del cronómetro en curso (offline-first).
+ * Guarda la sesión del cronómetro en curso.
  * Reutilizado por el Timer y por la lista de Tasks, para que detener una
  * tarea-actividad desde ahí registre exactamente el mismo registro.
+ * Sin conexión la escritura queda en cola y se sube sola.
  */
 export async function saveRunningSession(uid: string, running: RunningTimer, draft: TrackerDraft): Promise<number> {
   const end = Date.now();
@@ -34,9 +36,7 @@ export async function saveRunningSession(uid: string, running: RunningTimer, dra
     updatedAt: now,
   };
 
-  await putLocal('timeSessions', session);
-  await addOutbox({ collection: 'timeSessions', docId: id, operation: 'set', updatedAt: now });
-  notifyLocal('timeSessions');
+  await setDoc(doc(db, 'users', uid, 'timeSessions', id), clean(session));
 
   if (draft.taskId) await incrementTaskTime(uid, draft.taskId, duration);
   return duration;
@@ -46,9 +46,11 @@ export async function saveRunningSession(uid: string, running: RunningTimer, dra
  * Quita de la lista una tarea-actividad ya cronometrada
  * (misma regla que aplica el Timer al registrar su sesión).
  */
-export async function removeTrackedActivityTask(taskId: string): Promise<void> {
-  const now = new Date().toISOString();
-  await deleteLocal('tasks', taskId);
-  await addOutbox({ collection: 'tasks', docId: taskId, operation: 'delete', updatedAt: now });
-  notifyLocal('tasks');
+export async function removeTrackedActivityTask(uid: string, taskId: string): Promise<void> {
+  if (!uid || !taskId) return;
+  try {
+    await deleteDoc(doc(db, 'users', uid, 'tasks', taskId));
+  } catch (err) {
+    console.error(err);
+  }
 }

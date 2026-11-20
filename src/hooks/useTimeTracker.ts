@@ -3,7 +3,6 @@ import { deleteField } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useFirestoreCollection, incrementTaskTime } from './useFirestoreCollection';
 import { useUserStorage } from './useUserStorage';
-import { getMeta, subscribeLocal } from './localDB';
 import { saveRunningSession } from '../shared/runningSession';
 import type { Activity, TimeSession, TimerMode } from '../types';
 
@@ -78,26 +77,16 @@ export function useTimeTracker() {
   });
   const [now, setNow] = useState(Date.now());
 
-  // Esperar al primer sync antes de sembrar actividades (evita duplicados con datos de Firestore)
-  const [syncReady, setSyncReady] = useState(false);
+  // Semilla de actividades para usuarios nuevos: solo cuando el primer snapshot
+  // del SERVIDOR llega vacío, y una sola vez por cuenta en este dispositivo.
   useEffect(() => {
-    if (!uid) return;
-    let mounted = true;
-    const check = () => getMeta<boolean>('initialSyncDone').then((done) => {
-      if (mounted && done) setSyncReady(true);
-    });
-    check();
-    const unsub = subscribeLocal('_syncReady', check);
-    return () => { mounted = false; unsub(); };
-  }, [uid]);
-
-  // Semilla de actividades para usuarios nuevos (tras el primer sync)
-  useEffect(() => {
-    if (!uid || !syncReady || activitiesColl.loading) return;
-    if (activitiesColl.items.length === 0) {
-      DEFAULT_ACTIVITIES.forEach((a) => activitiesColl.set(a.id, { name: a.name, color: a.color }));
-    }
-  }, [uid, syncReady, activitiesColl]);
+    if (!uid || !activitiesColl.ready) return;
+    if (activitiesColl.items.length > 0) return;
+    const seedKey = `lumina-activities-seeded:${uid}`;
+    if (localStorage.getItem(seedKey)) return;
+    localStorage.setItem(seedKey, '1');
+    DEFAULT_ACTIVITIES.forEach((a) => activitiesColl.set(a.id, { name: a.name, color: a.color }));
+  }, [uid, activitiesColl.ready, activitiesColl.items.length, activitiesColl.set]);
 
   const isTicking = running !== null && running.startedAt !== null;
 

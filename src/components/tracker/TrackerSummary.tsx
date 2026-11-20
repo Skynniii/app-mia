@@ -35,7 +35,7 @@ export function TrackerSummary({ totalSeconds, sessionCount, avgSeconds, activit
   }
 
   return (
-    <div className="bg-white p-5 rounded-[24px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] flex flex-col gap-3">
+    <div className="bg-white p-4 rounded-[16px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <p className="text-[13px] font-semibold text-[#999] uppercase tracking-wide m-0">Tiempo total</p>
         <div className="flex items-center gap-2">

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useSettings } from '../../context/SettingsContext';
 import { formatEventTime, dateKey, MONTHS } from '../../hooks/useCalendarEvents';
 import { LAYER_META, minToHHMM, type CalendarItem } from '../../hooks/useCalendarData';
@@ -112,25 +112,68 @@ function AgendaViewBase({ itemsByDate, onSelectItem, onOpenDay, todayPulse = 0, 
     const target = todayRef.current;
     if (!scroller || !target) return;
     const offsetInScroller = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-    // Hoy queda arriba del todo, con un pequeño margen
+    // Hoy queda arriba del todo, con un pequeño margen. Si ya está en su
+    // sitio no se toca el scroll: así el ajuste de arranque no pelea con el
+    // gesto del usuario ni provoca scroll infinito.
     const top = Math.max(0, scroller.scrollTop + offsetInScroller - 8);
+    if (Math.abs(scroller.scrollTop - top) < 2) return;
     if (smooth) smoothScrollTo(scroller, top, 700);
     else scroller.scrollTop = top;
   }, [scrollRef]);
 
-  // Al entrar en la agenda, hoy queda de primero (tenga o no ítems)
+  /** La agenda se muestra cuando hoy ya está fijado arriba (sin saltos). */
+  const [anchored, setAnchored] = useState(false);
+  const userMoved = useRef(false);
+
+  // Al abrir la agenda, hoy queda arriba del todo, sin animación. En el arranque
+  // en frío del APK la altura de la lista cambia después del primer pintado
+  // (fuentes, ilustraciones y tareas/eventos que llegan del cache), así que el
+  // primer salto puede quedarse corto y la agenda aparecería en 2021: se vuelve
+  // a anclar cada vez que cambia la altura del contenido, mientras el usuario no
+  // haya tocado la pantalla, y no se muestra hasta estar realmente en su sitio.
   useLayoutEffect(() => {
-    scrollToToday(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    userMoved.current = false;
+
+    const settle = () => {
+      if (!userMoved.current) scrollToToday(false);
+      const target = todayRef.current;
+      if (!target) return;
+      const offset = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      if (Math.abs(offset - 8) <= 3) setAnchored(true);
+    };
+
+    settle();
+    const observer = new ResizeObserver(settle);
+    observer.observe(scroller);
+    if (scroller.firstElementChild) observer.observe(scroller.firstElementChild);
+
+    const markUser = () => { userMoved.current = true; };
+    scroller.addEventListener('touchstart', markUser, { passive: true });
+    scroller.addEventListener('wheel', markUser, { passive: true });
+    // Red de seguridad: si no se pudo medir, se muestra igualmente.
+    const fallback = window.setTimeout(() => setAnchored(true), 900);
+
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(fallback);
+      scroller.removeEventListener('touchstart', markUser);
+      scroller.removeEventListener('wheel', markUser);
+    };
+  }, [scrollToToday, scrollRef]);
 
   // El botón "Hoy" se desliza hasta la fecha actual (no salta de golpe)
   useEffect(() => {
-    if (todayPulse) scrollToToday(true);
+    if (todayPulse) {
+      userMoved.current = false;
+      setAnchored(true);
+      scrollToToday(true);
+    }
   }, [todayPulse, scrollToToday]);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6" style={{ visibility: anchored ? 'visible' : 'hidden' }}>
       {months.map(({ year, month, weeks }) => (
         <div key={`${year}-${month}`} data-agenda-month={`${year}-${String(month + 1).padStart(2, '0')}`}>
           {/* Ilustración del mes con su nombre encima */}
