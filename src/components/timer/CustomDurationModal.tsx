@@ -25,6 +25,12 @@ export function WheelPicker({ value, min, max, onChange, variant = 'boxed' }: { 
   const ref = useRef<HTMLDivElement>(null);
   const isScrollingRef = useRef(false);
   const mountedRef = useRef(false);
+  // Destino del desplazamiento animado en curso: mientras existe, los eventos
+  // de scroll no devuelven valores intermedios (eso dejaba la rueda en 28 al
+  // pedir 30) y solo se acepta el valor final exacto.
+  const programmaticTopRef = useRef<number | null>(null);
+  const scrollTimerRef = useRef<number | null>(null);
+  const programmaticTimerRef = useRef<number | null>(null);
 
   const items = [];
   for (let i = min; i <= max; i++) items.push(i);
@@ -39,18 +45,38 @@ export function WheelPicker({ value, min, max, onChange, variant = 'boxed' }: { 
       ref.current.scrollTop = top;
       return;
     }
+    programmaticTopRef.current = top;
     ref.current.scrollTo({ top, behavior: 'smooth' });
+    // Si la animación no emite un scroll final exacto, se libera igualmente.
+    if (programmaticTimerRef.current) window.clearTimeout(programmaticTimerRef.current);
+    programmaticTimerRef.current = window.setTimeout(() => { programmaticTopRef.current = null; }, 700);
   }, [value, min]);
 
+  useEffect(() => () => {
+    if (programmaticTimerRef.current) window.clearTimeout(programmaticTimerRef.current);
+    if (scrollTimerRef.current) window.clearTimeout(scrollTimerRef.current);
+  }, []);
+
+  // El usuario toma la rueda: la animación en curso deja de mandar.
+  const releaseProgrammatic = () => { programmaticTopRef.current = null; };
+
   const handleScroll = () => {
-    isScrollingRef.current = true;
-    if (ref.current) {
-      const idx = Math.round(ref.current.scrollTop / ITEM_HEIGHT);
-      const clamped = Math.max(min, Math.min(max, min + idx));
-      if (clamped !== value) onChange(clamped);
+    const el = ref.current;
+    if (!el) return;
+    // Desplazamiento animado: se ignora hasta llegar exactamente al destino.
+    if (programmaticTopRef.current !== null) {
+      if (Math.abs(el.scrollTop - programmaticTopRef.current) <= 1) {
+        programmaticTopRef.current = null;
+        isScrollingRef.current = false;
+      }
+      return;
     }
-    window.clearTimeout((handleScroll as any)._t);
-    (handleScroll as any)._t = window.setTimeout(() => { isScrollingRef.current = false; }, 80);
+    isScrollingRef.current = true;
+    const idx = Math.round(el.scrollTop / ITEM_HEIGHT);
+    const clamped = Math.max(min, Math.min(max, min + idx));
+    if (clamped !== value) onChange(clamped);
+    if (scrollTimerRef.current) window.clearTimeout(scrollTimerRef.current);
+    scrollTimerRef.current = window.setTimeout(() => { isScrollingRef.current = false; }, 120);
   };
 
   const flat = variant === 'flat';
@@ -65,6 +91,8 @@ export function WheelPicker({ value, min, max, onChange, variant = 'boxed' }: { 
       <div
         ref={ref}
         onScroll={handleScroll}
+        onPointerDown={releaseProgrammatic}
+        onWheel={releaseProgrammatic}
         className="h-full overflow-y-auto no-scrollbar snap-y snap-mandatory touch-pan-y"
         style={{ paddingTop: ITEM_HEIGHT, paddingBottom: ITEM_HEIGHT, WebkitOverflowScrolling: 'touch' }}
       >

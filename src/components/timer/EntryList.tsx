@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { dayLabel, formatElapsed, isoToDateKey } from '../../hooks/useTimeTracker';
 import { useSettings } from '../../context/SettingsContext';
 import { sessionModeLabel } from '../../utils/sessionMode';
+import { formatClockDate } from '../../utils/timeFormat';
 import type { Activity, TimeSession } from '../../types';
 
 interface Props {
@@ -25,7 +26,7 @@ export const EntryList = memo(function EntryList({ entries, activities, onSelect
   const { settings } = useSettings();
 
   // Hora según el formato elegido en ajustes (12h / 24h)
-  const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: settings.timeFormat === '12h' });
+  const fmtTime = (iso: string) => formatClockDate(iso, settings.timeFormat);
 
   const groups = useMemo(() => {
     const map = new Map<string, TimeSession[]>();

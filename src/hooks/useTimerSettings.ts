@@ -2,30 +2,63 @@ import { useMemo } from 'react';
 import { useUserStorage } from './useUserStorage';
 import type { AlarmSoundId } from '../utils/alarm';
 
-/** Intervalo extra dentro de un intervalo propio (máximo 5). */
-export interface IntervalExtra {
+/** Paso de un intervalo: nombre propio y minutos. */
+export interface IntervalStep {
   id: string;
   name: string;
-  /** Minutos que dura el intervalo extra. */
+  /** Minutos que dura el paso. */
   minutes: number;
 }
 
-/** Intervalo personalizado del modo "Intervalos". */
+/** Secuencia de intervalos creada por el usuario. */
 export interface CustomInterval {
   id: string;
   name: string;
-  /** Minutos de enfoque por ronda. */
-  focusMin: number;
-  /** Minutos de descanso entre rondas. */
-  restMin: number;
-  /** Cuántas rondas de enfoque tiene el intervalo. */
-  rounds: number;
-  /** Intervalos propios que se añaden tras el descanso de cada ronda. */
-  extras: IntervalExtra[];
+  /** Pasos en orden; se reproducen uno detrás de otro. */
+  steps: IntervalStep[];
 }
 
-/** Máximo de intervalos extra que admite un intervalo propio. */
-export const MAX_INTERVAL_EXTRAS = 5;
+/** Máximo de pasos que admite un intervalo. */
+export const MAX_INTERVAL_STEPS = 10;
+
+/** Nombre por defecto del paso número `index` (0-based). */
+export function intervalStepName(index: number): string {
+  return `Intervalo ${index + 1}`;
+}
+
+/** Ajustes guardados antiguos (enfoque/descanso/rondas/extra) → pasos. */
+function normalizeInterval(raw: Partial<CustomInterval> & {
+  focusMin?: number; restMin?: number; rounds?: number;
+  extras?: { id: string; name: string; minutes: number }[];
+}): CustomInterval {
+  if (Array.isArray(raw.steps) && raw.steps.length > 0) {
+    return {
+      id: raw.id ?? `iv-${Date.now()}`,
+      name: raw.name || intervalStepName(0),
+      steps: raw.steps.slice(0, MAX_INTERVAL_STEPS).map((st, i) => ({
+        id: st.id ?? `st-${i}`,
+        name: st.name || intervalStepName(i),
+        minutes: Math.max(1, st.minutes ?? 5),
+      })),
+    };
+  }
+  const steps: IntervalStep[] = [];
+  const rounds = Math.max(1, raw.rounds ?? 1);
+  for (let r = 0; r < rounds; r++) {
+    steps.push({ id: `st-f${r}`, name: intervalStepName(steps.length), minutes: Math.max(1, raw.focusMin ?? 25) });
+    if (r < rounds - 1) {
+      steps.push({ id: `st-r${r}`, minutes: Math.max(1, raw.restMin ?? 5), name: intervalStepName(steps.length) });
+      (raw.extras ?? []).forEach((ex) => {
+        steps.push({ id: `ex-${ex.id}-${r}`, name: ex.name || intervalStepName(steps.length), minutes: ex.minutes ?? 5 });
+      });
+    }
+  }
+  return {
+    id: raw.id ?? `iv-${Date.now()}`,
+    name: raw.name || intervalStepName(0),
+    steps: [{ id: `st-${Date.now()}`, name: intervalStepName(0), minutes: 5 }],
+  };
+}
 
 /** Tema visual del modo concentración. */
 export type FocusTheme = 'anillo' | 'numeros';
@@ -111,7 +144,7 @@ export function useTimerSettings() {
       ...merged,
       focusTheme: merged.focusTheme === 'numeros' ? 'numeros' : 'anillo',
       focusAppearance: merged.focusAppearance === 'dark' ? 'dark' : 'light',
-      intervals: (merged.intervals ?? []).map((iv) => ({ ...iv, extras: iv.extras ?? [] })),
+      intervals: (merged.intervals ?? []).map(normalizeInterval),
     };
   }, [stored]);
 

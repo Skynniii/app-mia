@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useFirestoreCollection } from './useFirestoreCollection';
 import type { CalendarEvent } from '../types';
+import { formatHHMM } from '../utils/timeFormat';
 
 export const EVENT_COLORS = ['#4d7cfe', '#7f70ff', '#9d51ff', '#34c77b', '#00b8a9', '#ffa94d', '#ff6b81', '#f26f5b'];
 
@@ -49,11 +50,7 @@ export function monthWeeks(y: number, m: number, weekStartsOn = 1): (string | nu
 }
 
 export function formatEventTime(hhmm: string, timeFormat: '12h' | '24h'): string {
-  const [h, m] = hhmm.split(':').map(Number);
-  if (timeFormat === '24h') return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-  const suffix = h >= 12 ? 'p.m.' : 'a.m.';
-  const h12 = h % 12 || 12;
-  return `${h12}:${String(m).padStart(2, '0')} ${suffix}`;
+  return formatHHMM(hhmm, timeFormat);
 }
 
 export function addMinutes(hhmm: string, mins: number): string {

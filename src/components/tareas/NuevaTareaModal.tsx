@@ -8,6 +8,7 @@ import { ActivityPicker } from '../timer/ActivityPicker';
 import { useActivities } from '../../hooks/useActivities';
 import { useSettings } from '../../context/SettingsContext';
 import { clampNotes, limitBeforeInput, plainNotesLength, NOTES_MAX_LENGTH } from '../../utils/notesLimit';
+import { formatHHMM } from '../../utils/timeFormat';
 import type { RepeatConfig, TaskList, Activity, Task } from '../../types';
 
 interface Props {
@@ -30,13 +31,7 @@ function fmtFecha(scheduledDate: string | undefined, scheduledTime: string | und
   const [, m, day] = d.split('-').map(Number);
   let s = `${day} ${MONTHS[m - 1]}`;
   if (scheduledTime) {
-    const [h, min] = scheduledTime.split(':').map(Number);
-    if (timeFormat === '12h') {
-      const h12 = h % 12 || 12;
-      s += ` · ${h12}:${String(min).padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`;
-    } else {
-      s += ` · ${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-    }
+    s += ` · ${formatHHMM(scheduledTime, timeFormat)}`;
   }
   if (repeat?.enabled) s += ' 🔁';
   return s;

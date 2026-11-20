@@ -199,7 +199,7 @@ export function TimerSettingsScreen({ onBack, initialSection }: Props) {
         <SectionTitle>Intervalos</SectionTitle>
         <div className="space-y-3">
           {timerSettings.intervals.length === 0 && (
-            <p className="text-[13px] text-[#999] m-0">Crea intervalos propios de enfoque y descanso.</p>
+            <p className="text-[13px] text-[#999] m-0">Crea secuencias de intervalos con sus propios minutos.</p>
           )}
           {timerSettings.intervals.map((iv) => (
             <button
@@ -211,8 +211,7 @@ export function TimerSettingsScreen({ onBack, initialSection }: Props) {
               <span className="min-w-0">
                 <span className="block text-[15px] font-semibold text-[#333] truncate">{iv.name}</span>
                 <span className="block text-[13px] text-[#999] mt-0.5">
-                  {formatMinutes(iv.focusMin)} · {formatMinutes(iv.restMin)} descanso · {iv.rounds} rondas
-                  {iv.extras.length > 0 ? ` · +${iv.extras.length} extra` : ''}
+                  {formatMinutes(iv.steps.reduce((sum, st) => sum + st.minutes, 0))} · {iv.steps.length} {iv.steps.length === 1 ? 'intervalo' : 'intervalos'}
                 </span>
               </span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ccc" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>

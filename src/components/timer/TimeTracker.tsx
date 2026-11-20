@@ -40,7 +40,9 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
   const [pomodoroElapsed, setPomodoroElapsed] = useState(0);
   // El pomodoro se completó: suena la alarma final hasta silenciarla.
   const [pomodoroFinished, setPomodoroFinished] = useState(false);
-  const [intervalRun, setIntervalRun] = useState<{ interval: CustomInterval; round: number; phase: 'focus' | 'rest' | 'extra'; extraIndex: number } | null>(null);
+  const [intervalRun, setIntervalRun] = useState<{ interval: CustomInterval; stepIndex: number } | null>(null);
+  // Tiempo acumulado de los pasos ya completados del intervalo en curso.
+  const [intervalElapsed, setIntervalElapsed] = useState(0);
   const [showFocus, setShowFocus] = useState(false);
   // Momento en que el temporizador llegó a cero: mientras no se silencie la
   // alarma, el tiempo extra se suma a la sesión.
@@ -145,27 +147,20 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
     }
   };
 
-  // Siguiente fase del intervalo en curso:
-  // enfoque → descanso → intervalos extra → siguiente ronda.
-  const advanceInterval = () => {
+  // Siguiente paso del intervalo en curso. `skipped` distingue un salto manual
+  // (solo cuenta el tiempo hecho) de un paso que llegó al final.
+  const advanceInterval = (skipped = false) => {
     if (!intervalRun) return;
-    const { interval, round, phase, extraIndex } = intervalRun;
-    const extras = interval.extras ?? [];
-    if (phase === 'focus') {
-      // Última ronda: el contador se queda en 00:00 para poder guardar la sesión.
-      if (round >= interval.rounds) return;
-      setIntervalRun({ ...intervalRun, phase: 'rest' });
-      cdStart(interval.restMin * 60);
-    } else if (phase === 'rest' && extras.length > 0) {
-      setIntervalRun({ ...intervalRun, phase: 'extra', extraIndex: 0 });
-      cdStart(extras[0].minutes * 60);
-    } else if (phase === 'extra' && extraIndex + 1 < extras.length) {
-      setIntervalRun({ ...intervalRun, phase: 'extra', extraIndex: extraIndex + 1 });
-      cdStart(extras[extraIndex + 1].minutes * 60);
-    } else {
-      setIntervalRun({ interval, round: round + 1, phase: 'focus', extraIndex: 0 });
-      cdStart(interval.focusMin * 60);
-    }
+    const { interval, stepIndex } = intervalRun;
+    const steps = interval.steps;
+    // Último paso: el contador se queda en 00:00 para poder guardar la sesión
+    // (su tiempo lo suma el guardado, así no se cuenta dos veces).
+    if (stepIndex + 1 >= steps.length) return;
+    const done = skipped ? Math.max(0, countdown.targetSeconds - countdown.remaining) : countdown.targetSeconds;
+    setIntervalElapsed((prev) => prev + done);
+    const next = stepIndex + 1;
+    setIntervalRun({ interval, stepIndex: next });
+    cdStart(steps[next].minutes * 60);
   };
 
   // Vuelve el pomodoro a su estado inicial (enfoque, ciclo 0, sin tiempo).
@@ -198,14 +193,16 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
     setMode(newMode);
     if (newMode === 'temporizador') countdown.setTarget(25);
     else if (newMode === 'pomodoro') { resetPomodoro(); }
-    else if (newMode === 'intervalos') { setIntervalRun(null); countdown.reset(); }
+    else if (newMode === 'intervalos') { setIntervalRun(null); setIntervalElapsed(0); countdown.reset(); }
   };
 
   const handlePomodoroSkip = () => advancePomodoro(true);
 
   const handleStartInterval = (interval: CustomInterval) => {
-    setIntervalRun({ interval, round: 1, phase: 'focus', extraIndex: 0 });
-    cdStart(interval.focusMin * 60);
+    const first = interval.steps[0];
+    setIntervalElapsed(0);
+    setIntervalRun({ interval, stepIndex: 0 });
+    cdStart(Math.max(1, first?.minutes ?? 5) * 60);
   };
 
   const handleDiscard = () => {
@@ -215,7 +212,7 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
     else {
       if (mode === 'pomodoro') countdown.setTarget(timerSettings.pomodoroFocus);
       else countdown.reset();
-      setIntervalRun(null); setPomodoroPhase('work'); setPomodoroCycle(0); setPomodoroElapsed(0);
+      setIntervalRun(null); setIntervalElapsed(0); setPomodoroPhase('work'); setPomodoroCycle(0); setPomodoroElapsed(0);
     }
     // Limpia taskId del draft para que no se herede en la próxima sesión
     tracker.setDraft((d) => ({ ...d, taskId: undefined, avanceTaskId: undefined }));
@@ -235,7 +232,9 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
     // el resto de modos, el tiempo de la cuenta en curso.
     const elapsed = mode === 'pomodoro'
       ? pomodoroElapsed + (pomodoroPhase === 'work' ? Math.max(0, countdown.targetSeconds - countdown.remaining) : 0)
-      : countdown.targetSeconds - countdown.remaining;
+      : mode === 'intervalos'
+        ? intervalElapsed + Math.max(0, countdown.targetSeconds - countdown.remaining)
+        : countdown.targetSeconds - countdown.remaining;
     if (elapsed >= 1) {
       const timerMode: AppTimerMode = mode === 'pomodoro' ? 'pomodoro' : mode === 'intervalos' ? 'interval' : 'timer';
       await tracker.saveSession(elapsed, timerMode);
@@ -252,6 +251,7 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
     if (mode === 'pomodoro') countdown.setTarget(timerSettings.pomodoroFocus);
     else countdown.reset();
     setIntervalRun(null);
+    setIntervalElapsed(0);
     setPomodoroPhase('work');
     setPomodoroCycle(0);
     setPomodoroElapsed(0);
@@ -331,18 +331,14 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
     intervalRun: intervalRun
       ? {
           name: intervalRun.interval.name,
-          round: intervalRun.round,
-          rounds: intervalRun.interval.rounds,
-          phase: intervalRun.phase,
-          phaseName: intervalRun.phase === 'focus'
-            ? 'Enfoque'
-            : intervalRun.phase === 'rest'
-              ? 'Descanso'
-              : (intervalRun.interval.extras?.[intervalRun.extraIndex]?.name || 'Extra'),
+          stepIndex: intervalRun.stepIndex,
+          stepsTotal: intervalRun.interval.steps.length,
+          stepName: intervalRun.interval.steps[intervalRun.stepIndex]?.name ?? '',
+          stepMinutes: intervalRun.interval.steps.map((st) => st.minutes),
         }
       : null,
     onStartInterval: handleStartInterval,
-    onIntervalSkip: advanceInterval,
+    onIntervalSkip: () => advanceInterval(true),
   };
 
   return (
@@ -414,11 +410,11 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
               )}
               {mode === 'intervalos' && (
                 <>
-                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: intervalRun?.phase === 'rest' ? '#34c77b' : '#7f70ff' }} />
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: '#7f70ff' }} />
                   <span className="text-[14px] font-medium text-[#333] flex-1 truncate">
-                    {intervalRun ? `${intervalRun.phase === 'focus' ? 'Enfoque' : 'Descanso'} ${intervalRun.round}/${intervalRun.interval.rounds} · ${intervalRun.interval.name}` : 'Intervalos'}
+                    {intervalRun ? `${intervalRun.interval.steps[intervalRun.stepIndex]?.name ?? 'Intervalo'} · ${intervalRun.stepIndex + 1}/${intervalRun.interval.steps.length}` : 'Intervalos'}
                   </span>
-                  <span className="text-[15px] font-bold tabular-nums shrink-0" style={{ color: intervalRun?.phase === 'rest' ? '#34c77b' : '#7f70ff' }}>{formatElapsed(activeElapsed)}</span>
+                  <span className="text-[15px] font-bold tabular-nums shrink-0" style={{ color: '#7f70ff' }}>{formatElapsed(activeElapsed)}</span>
                 </>
               )}
             </motion.div>

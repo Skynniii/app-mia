@@ -40,7 +40,7 @@ export interface ActiveTimerCardProps {
   pomodoroCycle: number;
   onPomodoroSkip: () => void;
   // Intervalos
-  intervalRun?: { name: string; round: number; rounds: number; phase: 'focus' | 'rest' | 'extra'; phaseName: string } | null;
+  intervalRun?: { name: string; stepIndex: number; stepsTotal: number; stepName: string; stepMinutes: number[] } | null;
   onStartInterval: (interval: import('../../hooks/useTimerSettings').CustomInterval) => void;
   onIntervalSkip: () => void;
 }

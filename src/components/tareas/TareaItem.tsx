@@ -10,6 +10,7 @@ import { Sparkles } from './Sparkles';
 import { ActivityCheckRing } from './ActivityCheckRing';
 import { useUserStorage } from '../../hooks/useUserStorage';
 import { formatElapsed, type RunningTimer, type TrackerDraft } from '../../hooks/useTimeTracker';
+import { formatHHMM } from '../../utils/timeFormat';
 import { saveRunningSession, removeTrackedActivityTask, runningDuration } from '../../shared/runningSession';
 import { requestFocusView } from '../../shared/focusRequest';
 
@@ -155,13 +156,7 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
     const d = new Date(task.scheduledDate + 'T00:00:00');
     let s = d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
     if (typeof task.scheduledTime === 'string' && task.scheduledTime) {
-      const [h, min] = task.scheduledTime.split(':').map(Number);
-      if (settings.timeFormat === '12h') {
-        const h12 = h % 12 || 12;
-        s += ` · ${h12}:${String(min).padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`;
-      } else {
-        s += ` · ${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-      }
+      s += ` · ${formatHHMM(task.scheduledTime, settings.timeFormat)}`;
     }
     if (task.repeat?.enabled) s += ' 🔁';
     return s;

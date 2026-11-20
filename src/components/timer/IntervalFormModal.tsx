@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useBackHandler } from '../../hooks/useBackHandler';
-import { MAX_INTERVAL_EXTRAS, type CustomInterval, type IntervalExtra } from '../../hooks/useTimerSettings';
+import { MAX_INTERVAL_STEPS, intervalStepName, type CustomInterval, type IntervalStep } from '../../hooks/useTimerSettings';
+import { CustomDurationModal } from './CustomDurationModal';
 
 interface Props {
   isOpen: boolean;
@@ -12,86 +13,59 @@ interface Props {
   onDelete?: (id: string) => void;
 }
 
-function Stepper({ label, value, min, max, step = 1, suffix, onChange }: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step?: number;
-  suffix: string;
-  onChange: (n: number) => void;
-}) {
-  const clamp = (n: number) => Math.min(max, Math.max(min, n));
-  return (
-    <div className="flex items-center justify-between gap-3 py-2">
-      <span className="text-[14px] text-[#555]">{label}</span>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => onChange(clamp(value - step))}
-          className="w-8 h-8 rounded-full bg-[#f7f6f9] border-none cursor-pointer flex items-center justify-center text-[#7f70ff] active:scale-90 transition-transform"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
-        </button>
-        <span className="text-[14px] font-semibold text-[#333] tabular-nums w-[64px] text-center">{value} {suffix}</span>
-        <button
-          type="button"
-          onClick={() => onChange(clamp(value + step))}
-          className="w-8 h-8 rounded-full bg-[#f7f6f9] border-none cursor-pointer flex items-center justify-center text-[#7f70ff] active:scale-90 transition-transform"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-        </button>
-      </div>
-    </div>
-  );
-}
+const newStep = (index: number): IntervalStep => ({
+  id: `st-${Date.now()}-${index}`,
+  name: intervalStepName(index),
+  minutes: 5,
+});
 
-/** Crear o editar un intervalo personalizado del modo "Intervalos". */
+/** Crear o editar una secuencia de intervalos del modo "Intervalos". */
 export function IntervalFormModal({ isOpen, interval, onClose, onSave, onDelete }: Props) {
   useBackHandler(isOpen, onClose);
   const [name, setName] = useState('');
-  const [focusMin, setFocusMin] = useState(25);
-  const [restMin, setRestMin] = useState(5);
-  const [rounds, setRounds] = useState(4);
-  const [extras, setExtras] = useState<IntervalExtra[]>([]);
+  const [steps, setSteps] = useState<IntervalStep[]>([]);
+  const [durationIndex, setDurationIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
-    setName(interval?.name ?? '');
-    setFocusMin(interval?.focusMin ?? 25);
-    setRestMin(interval?.restMin ?? 5);
-    setRounds(interval?.rounds ?? 4);
-    setExtras(interval?.extras ?? []);
+    setName(interval?.name ?? intervalStepName(0));
+    setSteps(interval?.steps.length ? interval.steps : [newStep(0)]);
+    setDurationIndex(null);
   }, [isOpen, interval]);
 
-  const addExtra = () => {
-    if (extras.length >= MAX_INTERVAL_EXTRAS) return;
-    setExtras((prev) => [...prev, { id: `ex-${Date.now()}`, name: '', minutes: 5 }]);
+  const addStep = () => {
+    if (steps.length >= MAX_INTERVAL_STEPS) return;
+    setSteps((prev) => [...prev, newStep(prev.length)]);
   };
 
-  const updateExtra = (id: string, updates: Partial<IntervalExtra>) => {
-    setExtras((prev) => prev.map((ex) => (ex.id === id ? { ...ex, ...updates } : ex)));
+  const updateStep = (id: string, updates: Partial<IntervalStep>) => {
+    setSteps((prev) => prev.map((st) => (st.id === id ? { ...st, ...updates } : st)));
   };
 
-  const removeExtra = (id: string) => setExtras((prev) => prev.filter((ex) => ex.id !== id));
+  const removeStep = (id: string) => {
+    setSteps((prev) => (prev.length <= 1 ? prev : prev.filter((st) => st.id !== id)));
+  };
 
   const save = () => {
-    const clean = name.trim() || 'Intervalo';
+    const clean = steps.map((st, i) => ({
+      ...st,
+      name: st.name.trim() || intervalStepName(i),
+      minutes: Math.max(1, st.minutes),
+    }));
     onSave({
       id: interval?.id ?? `iv-${Date.now()}`,
-      name: clean,
-      focusMin,
-      restMin,
-      rounds,
-      extras: extras.map((ex, i) => ({ ...ex, name: ex.name.trim() || `Extra ${i + 1}` })),
+      name: name.trim() || clean[0]?.name || intervalStepName(0),
+      steps: clean.slice(0, MAX_INTERVAL_STEPS),
     });
     onClose();
   };
 
+  const durationStep = durationIndex !== null ? steps[durationIndex] ?? null : null;
+
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
+    <>
+      <AnimatePresence>
+        {isOpen && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-[10001] flex items-center justify-center" onClick={onClose}>
             <motion.div
               initial={{ scale: 0.85, opacity: 0, y: 10 }}
@@ -114,66 +88,68 @@ export function IntervalFormModal({ isOpen, interval, onClose, onSave, onDelete 
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Nombre del intervalo"
-                  className="w-full border border-[#e4e4ed] rounded-xl py-2.5 px-3.5 text-[15px] text-[#333] bg-[#fafafc] outline-none focus:border-[#7f70ff] focus:bg-white transition-colors mb-1"
+                  className="w-full border border-[#e4e4ed] rounded-xl py-2.5 px-3.5 text-[15px] text-[#333] bg-[#fafafc] outline-none focus:border-[#7f70ff] focus:bg-white transition-colors mb-2"
                 />
-                <div className="divide-y divide-[#f2f2f6]">
-                  <Stepper label="Enfoque" value={focusMin} min={1} max={180} suffix="min" onChange={setFocusMin} />
-                  <Stepper label="Descanso" value={restMin} min={1} max={60} suffix="min" onChange={setRestMin} />
-                  <Stepper label="Rondas" value={rounds} min={1} max={12} suffix="rondas" onChange={setRounds} />
+                <div className="flex items-center justify-between">
+                  <span className="text-[14px] font-semibold text-[#555]">Intervalos</span>
+                  <span className="text-[12px] text-[#aaa] tabular-nums">{steps.length}/{MAX_INTERVAL_STEPS}</span>
                 </div>
-
-                {/* Intervalos extra: se añaden tras el descanso de cada ronda */}
-                <div className="pt-3 border-t border-[#f2f2f6]">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[14px] font-semibold text-[#555]">Intervalos extra</span>
-                    <span className="text-[12px] text-[#aaa] tabular-nums">{extras.length}/{MAX_INTERVAL_EXTRAS}</span>
-                  </div>
-                  <div className="flex flex-col gap-2 mt-2">
-                    {extras.map((ex) => (
-                      <div key={ex.id} className="flex items-center gap-2">
-                        <input
-                          value={ex.name}
-                          onChange={(e) => updateExtra(ex.id, { name: e.target.value })}
-                          placeholder={`Extra ${extras.indexOf(ex) + 1}`}
-                          className="flex-1 min-w-0 border border-[#e4e4ed] rounded-lg py-2 px-2.5 text-[14px] text-[#333] bg-[#fafafc] outline-none focus:border-[#7f70ff] focus:bg-white transition-colors"
-                        />
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => updateExtra(ex.id, { minutes: Math.max(1, ex.minutes - 1) })}
-                            className="w-7 h-7 rounded-full bg-[#f7f6f9] border-none cursor-pointer flex items-center justify-center text-[#7f70ff] active:scale-90 transition-transform"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                          </button>
-                          <span className="text-[13px] font-semibold text-[#333] tabular-nums w-[42px] text-center">{ex.minutes} min</span>
-                          <button
-                            type="button"
-                            onClick={() => updateExtra(ex.id, { minutes: Math.min(60, ex.minutes + 1) })}
-                            className="w-7 h-7 rounded-full bg-[#f7f6f9] border-none cursor-pointer flex items-center justify-center text-[#7f70ff] active:scale-90 transition-transform"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                          </button>
-                        </div>
+                <div className="flex flex-col gap-2 mt-2">
+                  {steps.map((st, i) => (
+                    <div key={st.id} className="flex items-center gap-1.5">
+                      <input
+                        value={st.name}
+                        onChange={(e) => updateStep(st.id, { name: e.target.value })}
+                        placeholder={intervalStepName(i)}
+                        className="flex-1 min-w-0 border border-[#e4e4ed] rounded-lg py-2 px-2.5 text-[14px] text-[#333] bg-[#fafafc] outline-none focus:border-[#7f70ff] focus:bg-white transition-colors"
+                      />
+                      <div className="flex items-center gap-1 shrink-0">
                         <button
                           type="button"
-                          onClick={() => removeExtra(ex.id)}
-                          className="w-7 h-7 rounded-full bg-[#fff1f3] border-none cursor-pointer flex items-center justify-center text-[#ff6b81] shrink-0"
+                          onClick={() => updateStep(st.id, { minutes: Math.max(1, st.minutes - 1) })}
+                          aria-label="Quitar un minuto"
+                          className="w-7 h-7 rounded-full bg-[#f7f6f9] border-none cursor-pointer flex items-center justify-center text-[#7f70ff] active:scale-90 transition-transform"
                         >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18" /><path d="M6 6l12 12" /></svg>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDurationIndex(i)}
+                          aria-label="Elegir duración"
+                          className="text-[13px] font-semibold text-[#333] tabular-nums w-[46px] text-center bg-transparent border-none cursor-pointer"
+                        >
+                          {st.minutes} min
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateStep(st.id, { minutes: Math.min(24 * 60, st.minutes + 1) })}
+                          aria-label="Añadir un minuto"
+                          className="w-7 h-7 rounded-full bg-[#f7f6f9] border-none cursor-pointer flex items-center justify-center text-[#7f70ff] active:scale-90 transition-transform"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                         </button>
                       </div>
-                    ))}
-                  </div>
-                  {extras.length < MAX_INTERVAL_EXTRAS && (
-                    <button
-                      type="button"
-                      onClick={addExtra}
-                      className="mt-2 w-full py-2 rounded-xl border border-dashed border-[#c9c2f0] bg-transparent text-[13px] font-semibold text-[#7f70ff] cursor-pointer"
-                    >
-                      + Añadir intervalo extra
-                    </button>
-                  )}
+                      <button
+                        type="button"
+                        onClick={() => removeStep(st.id)}
+                        disabled={steps.length <= 1}
+                        aria-label="Eliminar intervalo"
+                        className="w-7 h-7 rounded-full bg-[#fff1f3] border-none cursor-pointer flex items-center justify-center text-[#ff6b81] shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18" /><path d="M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  ))}
                 </div>
+                {steps.length < MAX_INTERVAL_STEPS && (
+                  <button
+                    type="button"
+                    onClick={addStep}
+                    className="mt-2 w-full py-2 rounded-xl border border-dashed border-[#c9c2f0] bg-transparent text-[13px] font-semibold text-[#7f70ff] cursor-pointer"
+                  >
+                    + Añadir intervalo
+                  </button>
+                )}
               </div>
 
               <div className="px-5 pb-5 pt-3 flex gap-2 shrink-0">
@@ -194,8 +170,19 @@ export function IntervalFormModal({ isOpen, interval, onClose, onSave, onDelete 
               </div>
             </motion.div>
           </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+        )}
+      </AnimatePresence>
+
+      <CustomDurationModal
+        isOpen={durationStep !== null}
+        title={durationStep ? `Duración · ${durationStep.name || intervalStepName(durationIndex ?? 0)}` : 'Duración'}
+        initialMinutes={durationStep?.minutes ?? 5}
+        onClose={() => setDurationIndex(null)}
+        onSave={(h, m) => {
+          if (durationStep) updateStep(durationStep.id, { minutes: Math.max(1, h * 60 + m) });
+          setDurationIndex(null);
+        }}
+      />
+    </>
   );
 }

@@ -14,6 +14,7 @@ import { Sparkles } from './Sparkles';
 import { CalendarModal } from './CalendarModal';
 import { clampNotes, limitBeforeInput, NOTES_MAX_LENGTH } from '../../utils/notesLimit';
 import { screenTransition } from '../../utils/motion';
+import { formatClockDate } from '../../utils/timeFormat';
 import { DatePickerModal } from './DatePickerModal';
 import { ActivityPicker } from '../timer/ActivityPicker';
 import { LinkPreview, normalizeUrl } from './LinkPreview';
@@ -275,12 +276,7 @@ export function TaskDetailView({ task, lists, allTasks, onBack, onToggle, onUpda
   const formatCompletedAt = (iso: string) => {
     const d = new Date(iso);
     const dateStr = d.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
-    const h = d.getHours();
-    const min = d.getMinutes();
-    const time = settings.timeFormat === '12h'
-      ? `${h % 12 || 12}:${String(min).padStart(2, '0')} ${h >= 12 ? 'p.m.' : 'a.m.'}`
-      : `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-    return `${dateStr}, ${time}`;
+    return `${dateStr}, ${formatClockDate(d, settings.timeFormat)}`;
   };
 
   const formatDate = () => {

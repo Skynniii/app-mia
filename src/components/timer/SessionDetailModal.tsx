@@ -10,6 +10,7 @@ import { TimePickerModal } from '../tareas/TimePickerModal';
 import { ActivityPicker } from './ActivityPicker';
 import { TaskPicker } from './TaskPicker';
 import { clampNotes, limitBeforeInput } from '../../utils/notesLimit';
+import { formatClockDate } from '../../utils/timeFormat';
 import { sessionModeLabel } from '../../utils/sessionMode';
 import { BackButton, DETAIL_HEADER_TOP } from '../ui/DetailScreen';
 
@@ -57,16 +58,7 @@ export function SessionDetailModal({ entry, onUpdate, onDelete, onClose, tasks, 
     return new Date(iso).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   };
 
-  const fmtClock = (iso: string) => {
-    const d = new Date(iso);
-    const h = d.getHours();
-    const min = d.getMinutes();
-    const sec = d.getSeconds();
-    if (settings.timeFormat === '12h') {
-      return `${h % 12 || 12}:${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`;
-    }
-    return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-  };
+  const fmtClock = (iso: string) => formatClockDate(iso, settings.timeFormat, true);
 
   const updateStartTime = (hour24: string, minute: string) => {
     const h = parseInt(hour24);

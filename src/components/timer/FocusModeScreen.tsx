@@ -11,12 +11,14 @@ interface Props {
   timeDisplay: string;
   progress: number;
   color: string;
-  /** Descripción de la actividad, si la hay. */
-  title: string;
+  /** Nombre de la actividad, arriba del reloj. */
+  activityName?: string;
+  /** Descripción de la sesión, debajo del reloj. */
+  description?: string;
   isRunning: boolean;
   keepScreenOn: boolean;
-  /** Sesiones del pomodoro en curso: completadas y totales. */
-  pomodoro?: { done: number; total: number } | null;
+  /** Fases en curso: minutos de cada una y en cuál va. */
+  bars?: { weights: number[]; active: number; activeProgress: number } | null;
   onToggle: () => void;
   onFinish: () => void;
   onSkip?: () => void;
@@ -40,8 +42,8 @@ function compactTime(time: string): string {
   return h === '00' ? `${m}:${s}` : `${Number(h)}:${m}:${s}`;
 }
 
-/** Pantalla del modo concentración: solo el reloj, la actividad y lo esencial. */
-export function FocusModeScreen({ theme, appearance, timeDisplay, progress, color, title, isRunning, keepScreenOn, pomodoro, onToggle, onFinish, onSkip, onExit }: Props) {
+/** Pantalla del modo concentración: actividad, reloj y lo esencial. */
+export function FocusModeScreen({ theme, appearance, timeDisplay, progress, color, activityName, description, isRunning, keepScreenOn, bars, onToggle, onFinish, onSkip, onExit }: Props) {
   useBackHandler(true, onExit);
   useWakeLock(keepScreenOn);
 
@@ -56,8 +58,6 @@ export function FocusModeScreen({ theme, appearance, timeDisplay, progress, colo
 
   const compact = compactTime(timeDisplay);
   const groups = compact.split(':');
-
-  const sessions = pomodoro && pomodoro.total > 0 ? pomodoro : null;
 
   return (
     <motion.div
@@ -84,75 +84,83 @@ export function FocusModeScreen({ theme, appearance, timeDisplay, progress, colo
 
       {/* Contenido */}
       <div className="relative flex-1 flex flex-col items-center justify-center px-4">
+        {/* Actividad, arriba del reloj */}
+        {activityName && (
+          <span
+            className="flex items-center gap-2 mb-7 max-w-[300px] rounded-full px-3.5 py-1.5 text-[13px] font-semibold tracking-[-0.01em]"
+            style={{ color: ink, background: dark ? 'rgba(255,255,255,0.07)' : '#ffffff', boxShadow: dark ? 'none' : '0 6px 18px rgba(28,28,35,0.06)' }}
+          >
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+            <span className="truncate">{activityName}</span>
+          </span>
+        )}
+
         {theme === 'anillo' ? (
-          <>
-            <div className="relative flex items-center justify-center">
-              {!dark && (
-                <div className="absolute w-[320px] h-[320px] rounded-full anim-focus-breath blur-[70px]" style={{ background: `${color}1f` }} />
-              )}
-              <FocusRing progress={progress} color={color} size={280} stroke={6} trackColor={track} shimmer={isRunning}>
-                <span className="font-light tabular-nums tracking-[-0.03em] leading-none" style={{ color: ink, fontSize: 46 }}>{compact}</span>
-              </FocusRing>
-            </div>
-            {title && (
-              <p className="mt-8 mb-0 max-w-[280px] truncate text-[14px] font-medium tracking-[-0.01em] text-center" style={{ color: muted }}>{title}</p>
+          <div className="relative flex items-center justify-center">
+            {!dark && (
+              <div className="absolute w-[320px] h-[320px] rounded-full anim-focus-breath blur-[70px]" style={{ background: `${color}1f` }} />
             )}
-          </>
+            <FocusRing progress={progress} color={color} size={280} stroke={6} trackColor={track} shimmer={isRunning}>
+              <span className="font-light tabular-nums tracking-[-0.03em] leading-none" style={{ color: ink, fontSize: 56 }}>{compact}</span>
+            </FocusRing>
+          </div>
         ) : (
-          <div className="flex flex-col items-center">
-            <span
-              className={`w-1.5 h-1.5 rounded-full mb-10 ${isRunning ? 'anim-dot-pulse' : ''}`}
-              style={{ background: isRunning ? color : muted }}
-            />
-            <div className="flex items-end justify-center gap-2">
-              {groups.map((g, i) => (
-                <Fragment key={i}>
-                  {i > 0 && (
-                    <span className="font-light leading-none pb-3" style={{ color: muted, fontSize: groups.length > 2 ? 34 : 46 }}>:</span>
-                  )}
-                  <span
-                    className="relative overflow-hidden rounded-[18px] px-3 py-2 font-light tabular-nums leading-none tracking-[-0.04em]"
-                    style={{
-                      background: panelBg,
-                      color: ink,
-                      fontSize: groups.length > 2 ? 'clamp(40px, 16vw, 68px)' : 'clamp(56px, 23vw, 92px)',
-                      boxShadow: dark ? '0 10px 30px rgba(0,0,0,0.55)' : '0 10px 26px rgba(28,28,35,0.08)',
-                    }}
-                  >
-                    <span className="absolute left-0 right-0 top-1/2 h-px" style={{ background: dark ? 'rgba(255,255,255,0.07)' : 'rgba(28,28,35,0.06)' }} />
-                    {g}
-                  </span>
-                </Fragment>
-              ))}
-            </div>
-            {title && (
-              <p className="mt-8 mb-0 max-w-[280px] truncate text-[14px] font-medium tracking-[-0.01em] text-center" style={{ color: muted }}>{title}</p>
-            )}
+          /* Números: grupos de cifras apilados en vertical, grandes y centrados */
+          <div className="flex flex-col items-center gap-2">
+            {groups.map((g, i) => (
+              <Fragment key={i}>
+                {i > 0 && <span className="w-1.5 h-1.5 rounded-full" style={{ background: muted, opacity: 0.5 }} />}
+                <span
+                  className="relative overflow-hidden rounded-[18px] px-5 py-1.5 text-center font-light tabular-nums leading-none tracking-[-0.04em]"
+                  style={{
+                    background: panelBg,
+                    color: ink,
+                    fontSize: groups.length > 2 ? 'clamp(40px, 14vw, 58px)' : 'clamp(56px, 19vw, 82px)',
+                    minWidth: 'min(220px, 56vw)',
+                    boxShadow: dark ? '0 10px 30px rgba(0,0,0,0.55)' : '0 10px 26px rgba(28,28,35,0.08)',
+                  }}
+                >
+                  <span className="absolute left-0 right-0 top-1/2 h-px" style={{ background: dark ? 'rgba(255,255,255,0.07)' : 'rgba(28,28,35,0.06)' }} />
+                  {g}
+                </span>
+              </Fragment>
+            ))}
           </div>
         )}
 
-        {/* Sesiones del pomodoro: barritas separadas por puntos */}
-        {sessions && (
-          <div className="mt-7 flex items-center gap-1.5">
-            {Array.from({ length: sessions.total }).map((_, i) => {
-              const done = i < sessions.done;
-              const current = i === sessions.done && isRunning;
+        {/* Fases en curso: una barrita por fase, con el ancho de su duración */}
+        {bars && bars.weights.length > 0 && (
+          <div className="mt-6 flex items-center gap-1.5 w-[220px]">
+            {bars.weights.map((weight, i) => {
+              const done = i < bars.active;
+              const current = i === bars.active;
               return (
-                <Fragment key={i}>
-                  {i > 0 && <span className="w-[3px] h-[3px] rounded-full" style={{ background: muted, opacity: 0.5 }} />}
-                  <span
-                    className="rounded-full transition-colors duration-500"
-                    style={{
-                      width: 18,
-                      height: 4,
-                      background: done ? color : current ? `${color}66` : muted,
-                      opacity: done || current ? 1 : 0.28,
-                    }}
-                  />
-                </Fragment>
+                <span
+                  key={i}
+                  className="relative block overflow-hidden rounded-full"
+                  style={{
+                    flexGrow: Math.max(1, weight),
+                    flexBasis: 0,
+                    height: 4,
+                    background: done ? color : current ? `${color}3d` : muted,
+                    opacity: done || current ? 1 : 0.3,
+                  }}
+                >
+                  {current && (
+                    <span
+                      className="absolute inset-y-0 left-0 rounded-full"
+                      style={{ width: `${Math.round(Math.min(1, Math.max(0, bars.activeProgress)) * 100)}%`, background: color }}
+                    />
+                  )}
+                </span>
               );
             })}
           </div>
+        )}
+
+        {/* Descripción, debajo del reloj */}
+        {description && (
+          <p className="mt-7 mb-0 max-w-[280px] truncate text-[14px] font-medium tracking-[-0.01em] text-center" style={{ color: muted }}>{description}</p>
         )}
       </div>
 

@@ -58,6 +58,10 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
     `tabular-nums tracking-[-0.04em]`.
 - Colores de tinta: principal `#1c1c23`, cuerpo `#333`, secundario `#777`,
   apagado `#8b8b98`/`#a0a0a0`.
+- Horas: usa `src/utils/timeFormat.ts` (`formatClockDate`, `formatHHMM`,
+  `formatTimeParts`). En formato de 12 h el sufijo va siempre como "AM"/"PM"
+  pegado a la hora ("2:42 PM"); nunca `toLocaleTimeString('es-CO')` (devuelve
+  "p. m.") ni sufijos en minúscula.
 
 ## Barra de estado en Android (Capacitor)
 
@@ -157,17 +161,19 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
   `targetSeconds + espera hasta silenciar`: ese tiempo extra es parte del
   registro. `primeAlarmAudio()` se llama en el gesto de iniciar porque los
   móviles bloquean el audio sin interacción.
-- Modo concentración (`FocusModeScreen`): pantalla completa con el reloj, la
-  descripción y botones descoloridos (salir, pausa, saltar y terminar). Se entra
-  con el botón de la cabecera de `FocusScreen` mientras hay sesión activa, y
-  automáticamente al iniciar si `startInFocusMode` está activo. Dos temas
-  (`focusTheme`: `anillo` y `numeros`) y fondo claro u oscuro
+- Modo concentración (`FocusModeScreen`): pantalla completa con la actividad
+  arriba del reloj (pastilla con el color de la actividad, que también tiñe el
+  anillo), la descripción debajo y botones descoloridos (salir, pausa, saltar y
+  terminar). Se entra con el botón de la cabecera de `FocusScreen` mientras hay
+  sesión activa, y automáticamente al iniciar si `startInFocusMode` está activo.
+  Dos temas (`focusTheme`: `anillo` y `numeros`) y fondo claro u oscuro
   (`focusAppearance`); el tema retirado `onda` se normaliza a `anillo` en
   `useTimerSettings`. El anillo mide 280 y el tiempo se muestra compacto
-  (`MM:SS` sin horas, `H:MM:SS` con horas) igual en ambos temas; el tema de
-  números pinta cada grupo en un panel tipo flip. Con pomodoro en marcha se ven
-  debajo las sesiones como barritas separadas por puntos. El título no va en
-  mayúsculas. `keepScreenOn` usa Screen Wake Lock (`useWakeLock`).
+  (`MM:SS` sin horas, `H:MM:SS` con horas); el tema de números apila los grupos
+  en vertical, grandes y centrados. La prop `bars` pinta una barrita por fase
+  con el ancho de su duración: pomodoro (`pomodoroLongBreakEvery` sesiones) e
+  intervalos (los minutos de cada paso). `keepScreenOn` usa Screen Wake Lock
+  (`useWakeLock`).
 - El registro manual (botón del calendario con +) solo existe en Rastreador.
 - Pomodoro: debajo del anillo va una línea con la configuración actual
   (`25 min · 5 min · 15 min · 4/4`) y el botón "Configurar pomodoro", que abre
@@ -187,11 +193,15 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
   botones. El contenido lleva `pb-44` para no quedar debajo.
 - Con pomodoro o intervalos en marcha la barra inferior tiene cuatro botones:
   X, play/pausa, saltar fase y check (pulsación larga = completar tarea).
-- Intervalos: cada intervalo propio tiene nombre, minutos de enfoque, minutos de
-  descanso, número de rondas y hasta 5 intervalos extra propios
-  (`MAX_INTERVAL_EXTRAS`, nombre y minutos editables). La fase alterna enfoque →
-  descanso → intervalos extra → siguiente ronda; al acabar el último enfoque el
-  contador se queda en 00:00 para guardar.
+- Intervalos: cada intervalo es una secuencia propia (`steps`, máximo
+  `MAX_INTERVAL_STEPS` = 10) sin enfoque/descanso por defecto: el usuario añade
+  "Intervalo 1, Intervalo 2…" con nombre y minutos editables. En
+  `IntervalFormModal` el nombre es un campo, los minutos se cambian con − / + y
+  al tocar el número se abre `CustomDurationModal`. Los pasos se reproducen en
+  orden; al acabar el último el contador se queda en 00:00 para guardar y el
+  tiempo se acumula (`intervalElapsed`) para registrarlo todo. En la vista
+  principal el botón "+ Nuevo intervalo" abre el modal directamente y solo se
+  muestra cuando no hay ninguno; con al menos uno, solo aparece en configuración.
 
 ## Sección Calendario
 

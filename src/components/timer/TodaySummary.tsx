@@ -4,6 +4,7 @@ import { formatElapsed, todayKey, isoToDateKey } from '../../hooks/useTimeTracke
 import type { Activity, TimeSession } from '../../types';
 import { useDeviceCapability } from '../../context/DeviceCapabilityContext';
 import { useSettings } from '../../context/SettingsContext';
+import { formatClockDate } from '../../utils/timeFormat';
 
 interface Props {
   entries: TimeSession[];
@@ -148,7 +149,7 @@ export function TodaySummary({ entries, activities, liveElapsed, isRunning, live
                             {s.description}
                           </p>
                           <p className="text-[11px] text-[#b0b0b0] m-0">
-                            {s.isLive ? 'En curso' : `${new Date(s.entry!.startTime).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: settings.timeFormat === '12h' })} – ${new Date(s.entry!.endTime).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: settings.timeFormat === '12h' })}`}
+                            {s.isLive ? 'En curso' : `${formatClockDate(s.entry!.startTime, settings.timeFormat)} – ${formatClockDate(s.entry!.endTime, settings.timeFormat)}`}
                           </p>
                         </div>
                         <span className="text-[12px] font-semibold text-[#555] tabular-nums shrink-0">{formatElapsed(s.seconds)}</span>
