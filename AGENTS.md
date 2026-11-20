@@ -90,9 +90,11 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
   interior del modal o el botón Notas cuando la nota está vacía (con contenido
   solo lo cierra el botón); el editor de notas y la barra de formato hacen
   `stopPropagation` para no cerrarlo al escribir.
-- `NuevaTareaModal` entra deslizándose desde abajo (`y: '100%' → 0`, 240 ms) y
-  enfoca el título a los 240 ms: el teclado sube después y empuja el modal.
-  No vuelvas a usar `autoFocus`: enfocaba antes de entrar y el modal parpadeaba.
+- `NuevaTareaModal` entra deslizándose desde abajo (`y: '100%' → 0`, 200 ms) y
+  enfoca el título en `onAnimationComplete`, justo al terminar de entrar: el
+  teclado empieza a subir en ese frame y empuja el modal, sin espera fija (un
+  `setTimeout` dejaba un hueco visible entre la llegada y el teclado). No vuelvas
+  a usar `autoFocus`: enfoca antes de entrar y el modal parpadea.
 - El panel solo compensa `bottom` con el `visualViewport` cuando el layout **no**
   cambia (teclado superpuesto, p. ej. iOS) y tras dos lecturas estables. Con
   `resizes-content` el navegador ya arrastra el panel; compensar además duplicaba
