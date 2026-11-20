@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useBackHandler } from '../../hooks/useBackHandler';
-import type { CustomInterval } from '../../hooks/useTimerSettings';
+import { MAX_INTERVAL_EXTRAS, type CustomInterval, type IntervalExtra } from '../../hooks/useTimerSettings';
 
 interface Props {
   isOpen: boolean;
@@ -53,6 +53,7 @@ export function IntervalFormModal({ isOpen, interval, onClose, onSave, onDelete 
   const [focusMin, setFocusMin] = useState(25);
   const [restMin, setRestMin] = useState(5);
   const [rounds, setRounds] = useState(4);
+  const [extras, setExtras] = useState<IntervalExtra[]>([]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -60,11 +61,30 @@ export function IntervalFormModal({ isOpen, interval, onClose, onSave, onDelete 
     setFocusMin(interval?.focusMin ?? 25);
     setRestMin(interval?.restMin ?? 5);
     setRounds(interval?.rounds ?? 4);
+    setExtras(interval?.extras ?? []);
   }, [isOpen, interval]);
+
+  const addExtra = () => {
+    if (extras.length >= MAX_INTERVAL_EXTRAS) return;
+    setExtras((prev) => [...prev, { id: `ex-${Date.now()}`, name: '', minutes: 5 }]);
+  };
+
+  const updateExtra = (id: string, updates: Partial<IntervalExtra>) => {
+    setExtras((prev) => prev.map((ex) => (ex.id === id ? { ...ex, ...updates } : ex)));
+  };
+
+  const removeExtra = (id: string) => setExtras((prev) => prev.filter((ex) => ex.id !== id));
 
   const save = () => {
     const clean = name.trim() || 'Intervalo';
-    onSave({ id: interval?.id ?? `iv-${Date.now()}`, name: clean, focusMin, restMin, rounds });
+    onSave({
+      id: interval?.id ?? `iv-${Date.now()}`,
+      name: clean,
+      focusMin,
+      restMin,
+      rounds,
+      extras: extras.map((ex, i) => ({ ...ex, name: ex.name.trim() || `Extra ${i + 1}` })),
+    });
     onClose();
   };
 
@@ -79,7 +99,7 @@ export function IntervalFormModal({ isOpen, interval, onClose, onSave, onDelete 
               exit={{ scale: 0.85, opacity: 0, y: 10 }}
               transition={{ duration: 0.2, ease: 'easeOut' }}
               className="bg-white rounded-3xl z-[10002] flex flex-col shadow-[0_12px_40px_rgba(0,0,0,0.15)] mx-5"
-              style={{ width: 'min(340px, 90vw)' }}
+              style={{ width: 'min(340px, 90vw)', maxHeight: '85vh' }}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="px-5 pt-5 pb-1 flex items-center justify-between shrink-0">
@@ -89,7 +109,7 @@ export function IntervalFormModal({ isOpen, interval, onClose, onSave, onDelete 
                 </button>
               </div>
 
-              <div className="px-5 pt-2">
+              <div className="px-5 pt-2 overflow-y-auto no-scrollbar">
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -101,9 +121,62 @@ export function IntervalFormModal({ isOpen, interval, onClose, onSave, onDelete 
                   <Stepper label="Descanso" value={restMin} min={1} max={60} suffix="min" onChange={setRestMin} />
                   <Stepper label="Rondas" value={rounds} min={1} max={12} suffix="rondas" onChange={setRounds} />
                 </div>
+
+                {/* Intervalos extra: se añaden tras el descanso de cada ronda */}
+                <div className="pt-3 border-t border-[#f2f2f6]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[14px] font-semibold text-[#555]">Intervalos extra</span>
+                    <span className="text-[12px] text-[#aaa] tabular-nums">{extras.length}/{MAX_INTERVAL_EXTRAS}</span>
+                  </div>
+                  <div className="flex flex-col gap-2 mt-2">
+                    {extras.map((ex) => (
+                      <div key={ex.id} className="flex items-center gap-2">
+                        <input
+                          value={ex.name}
+                          onChange={(e) => updateExtra(ex.id, { name: e.target.value })}
+                          placeholder={`Extra ${extras.indexOf(ex) + 1}`}
+                          className="flex-1 min-w-0 border border-[#e4e4ed] rounded-lg py-2 px-2.5 text-[14px] text-[#333] bg-[#fafafc] outline-none focus:border-[#7f70ff] focus:bg-white transition-colors"
+                        />
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => updateExtra(ex.id, { minutes: Math.max(1, ex.minutes - 1) })}
+                            className="w-7 h-7 rounded-full bg-[#f7f6f9] border-none cursor-pointer flex items-center justify-center text-[#7f70ff] active:scale-90 transition-transform"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                          </button>
+                          <span className="text-[13px] font-semibold text-[#333] tabular-nums w-[42px] text-center">{ex.minutes} min</span>
+                          <button
+                            type="button"
+                            onClick={() => updateExtra(ex.id, { minutes: Math.min(60, ex.minutes + 1) })}
+                            className="w-7 h-7 rounded-full bg-[#f7f6f9] border-none cursor-pointer flex items-center justify-center text-[#7f70ff] active:scale-90 transition-transform"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeExtra(ex.id)}
+                          className="w-7 h-7 rounded-full bg-[#fff1f3] border-none cursor-pointer flex items-center justify-center text-[#ff6b81] shrink-0"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18" /><path d="M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  {extras.length < MAX_INTERVAL_EXTRAS && (
+                    <button
+                      type="button"
+                      onClick={addExtra}
+                      className="mt-2 w-full py-2 rounded-xl border border-dashed border-[#c9c2f0] bg-transparent text-[13px] font-semibold text-[#7f70ff] cursor-pointer"
+                    >
+                      + Añadir intervalo extra
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="px-5 pb-5 pt-3 flex gap-2">
+              <div className="px-5 pb-5 pt-3 flex gap-2 shrink-0">
                 {interval && onDelete && (
                   <button
                     onClick={() => { onDelete(interval.id); onClose(); }}

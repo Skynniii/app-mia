@@ -15,13 +15,6 @@ interface Props {
   vibrate: boolean;
 }
 
-/** "+1:05" para el tiempo extra sobre la cuenta configurada. */
-function formatExtra(totalSeconds: number) {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
 /**
  * Pantalla de temporizador completado: suena la alarma hasta que el usuario la
  * silencia y el tiempo registrado incluye esa espera.
@@ -79,10 +72,6 @@ export function TimerCompleteScreen({ targetSeconds, finishedAt, onSilence, soun
       <div className="mt-8 flex flex-col items-center">
         <span className="eyebrow">Tiempo registrado</span>
         <span className="text-[40px] font-bold tabular-nums tracking-[-0.04em] text-[#1c1c23] leading-none mt-2">{formatElapsed(totalSeconds)}</span>
-        <span className="mt-3 text-[13px] text-[#777]">
-          {formatElapsed(targetSeconds)} de temporizador
-          <span className="text-[#7f70ff] font-semibold"> · +{formatExtra(extraSeconds)}</span>
-        </span>
       </div>
 
       <button

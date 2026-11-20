@@ -87,6 +87,7 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
   const holdIntervalRef = useRef<number | null>(null);
   const isHoldingRef = useRef(false);
   const [timerSettingsOpen, setTimerSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<'pomodoro' | undefined>(undefined);
   const [focusMode, setFocusMode] = useState(false);
   const notesRef = useRef<HTMLDivElement>(null);
   const [notesExpanded, setNotesExpanded] = useState(false);
@@ -115,18 +116,21 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
   const isPaused = props.running !== null && props.running.startedAt === null;
   const isTicking = props.running !== null && props.running.startedAt !== null;
 
-  const hasStarted = mode === 'rastreador' ? props.running !== null : countdown.remaining < countdown.targetSeconds;
+  const hasStarted = mode === 'rastreador'
+    ? props.running !== null
+    : mode === 'pomodoro'
+      // Con el inicio automático apagado el pomodoro sigue activo aunque el
+      // contador esté parado esperando la siguiente sesión.
+      ? (pomodoroCycle > 0 || countdown.running || countdown.remaining < countdown.targetSeconds)
+      : countdown.remaining < countdown.targetSeconds;
   const isRunning = mode === 'rastreador' ? isTicking : countdown.running;
   const isActive = isRunning;
 
   const activityColor = activity?.color ?? '#7f70ff';
-  // El temporizador se llena al iniciar (0→1); al pausar se mantiene lleno y al reiniciar vuelve a 0.
-  const timerFilled = isRunning || countdown.remaining < countdown.targetSeconds;
-  const progress = isPhaseMode
-    ? (countdown.targetSeconds > 0 ? countdown.remaining / countdown.targetSeconds : 0)
-    : mode === 'temporizador'
-      ? (timerFilled ? 1 : 0)
-      : (hasStarted ? 1 : 0);
+  // El anillo se llena al empezar y se va vaciando con la cuenta atrás.
+  const progress = mode === 'rastreador'
+    ? (hasStarted ? 1 : 0)
+    : (countdown.targetSeconds > 0 ? countdown.remaining / countdown.targetSeconds : 0);
   const ringColor = mode === 'pomodoro'
     ? (pomodoroPhase === 'work' ? '#7f70ff' : '#34c77b')
     : mode === 'intervalos'
@@ -323,9 +327,10 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
       <div className="flex-1 overflow-y-auto no-scrollbar px-5">
         {/* Anillo */}
         <div className="flex flex-col items-center pt-4 pb-6">
+          <AnimatePresence mode="wait" initial={false}>
           {mode === 'temporizador' && !hasStarted ? (
             /* Selector de duración: horas y minutos, sin el anillo */
-            <div className="w-full flex flex-col items-center">
+            <motion.div key="setup" initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} transition={{ duration: 0.22, ease: 'easeOut' }} className="w-full flex flex-col items-center">
               <div className="flex items-start justify-center gap-2">
                 <div className="flex flex-col items-center gap-1">
                   <span className="eyebrow">Horas</span>
@@ -344,10 +349,10 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
                   <button key={min} onClick={() => setDuration(min)} className={`px-3.5 py-1.5 rounded-full text-[13px] font-semibold border-none cursor-pointer transition-colors ${Math.round(countdown.targetSeconds / 60) === min ? 'bg-[#7f70ff] text-white shadow-[2px_4px_10px_rgba(127,112,255,0.2)]' : 'bg-[#f7f6f9] text-[#777]'}`}>{formatDurationLabel(min)}</button>
                 ))}
               </div>
-            </div>
+            </motion.div>
           ) : mode === 'intervalos' && !hasStarted ? (
             /* Intervalos propios del usuario */
-            <div className="w-full max-w-[340px]">
+            <motion.div key="intervals" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} transition={{ duration: 0.22, ease: 'easeOut' }} className="w-full max-w-[340px]">
               {timerSettings.intervals.length === 0 ? (
                 <p className="text-[14px] text-[#8b8b98] text-center m-0 py-6">Todavía no tienes intervalos. Crea uno y aparecerá aquí.</p>
               ) : (
@@ -364,9 +369,9 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
                 </div>
               )}
               <button onClick={() => setTimerSettingsOpen(true)} className="mt-3 w-full py-3 rounded-2xl border border-dashed border-[#7f70ff] bg-transparent text-[14px] font-semibold text-[#7f70ff] cursor-pointer">+ Nuevo intervalo</button>
-            </div>
+            </motion.div>
           ) : (
-            <>
+            <motion.div key="clock" initial={{ opacity: 0, scale: 0.82 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} transition={{ type: 'spring', stiffness: 240, damping: 26 }} className="flex flex-col items-center w-full">
               <div className="relative flex items-center justify-center">
                 <div className="absolute w-[260px] h-[260px] rounded-full bg-[#7f70ff]/5 blur-[50px] anim-glow-pulse" />
                 <FocusRing progress={progress} color={ringColor} size={200} stroke={7} trackColor="#e8e6f0" shimmer={ringShimmer}>
@@ -377,14 +382,22 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
                 </FocusRing>
               </div>
 
-              {/* Ajuste de un minuto: solo con el temporizador ya en marcha */}
+              {/* Sumar o restar tiempo: solo con el temporizador ya en marcha */}
               {mode === 'temporizador' && hasStarted && (
-                <div className="flex items-center gap-2 mt-4">
-                  <button onClick={() => countdown.addTime(-60)} className="px-4 py-2 rounded-full bg-[#f7f6f9] border-none cursor-pointer text-[13px] font-semibold text-[#777] active:scale-95 transition-transform">
-                    − 1 min
+                <div className="flex items-center gap-3 mt-5">
+                  <button
+                    onClick={() => countdown.addTime(-timerSettings.timerAdjustMinutes * 60)}
+                    aria-label="Quitar tiempo"
+                    className="w-12 h-12 rounded-full bg-[#f4f2fa] border-none cursor-pointer flex items-center justify-center active:scale-90 transition-transform"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#777" strokeWidth="2.6" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
                   </button>
-                  <button onClick={() => countdown.addTime(60)} className="px-4 py-2 rounded-full bg-[#f7f6f9] border-none cursor-pointer text-[13px] font-semibold text-[#7f70ff] active:scale-95 transition-transform">
-                    + 1 min
+                  <button
+                    onClick={() => countdown.addTime(timerSettings.timerAdjustMinutes * 60)}
+                    aria-label="Añadir tiempo"
+                    className="w-12 h-12 rounded-full bg-[#7f70ff] border-none cursor-pointer flex items-center justify-center active:scale-90 transition-transform shadow-[0_4px_12px_rgba(127,112,255,0.28)]"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                   </button>
                 </div>
               )}
@@ -399,9 +412,9 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
 
               {mode === 'intervalos' && intervalRun && (
                 <div className="flex items-center gap-2 mt-3">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: intervalRun.phase === 'focus' ? '#7f70ff' : '#34c77b' }} />
-                  <span className="text-[13px] font-bold uppercase tracking-wide" style={{ color: intervalRun.phase === 'focus' ? '#7f70ff' : '#34c77b' }}>
-                    {intervalRun.phase === 'focus' ? 'Enfoque' : 'Descanso'} {intervalRun.round}/{intervalRun.rounds}
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: intervalRun.phase === 'rest' ? '#34c77b' : '#7f70ff' }} />
+                  <span className="text-[13px] font-bold uppercase tracking-wide" style={{ color: intervalRun.phase === 'rest' ? '#34c77b' : '#7f70ff' }}>
+                    {intervalRun.phaseName} {intervalRun.round}/{intervalRun.rounds}
                   </span>
                   <span className="text-[11px] text-[#b0b0b0] truncate max-w-[120px]">· {intervalRun.name}</span>
                 </div>
@@ -417,26 +430,29 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
                   ))}
                 </div>
               )}
-            </>
+            </motion.div>
           )}
+          </AnimatePresence>
 
-          {/* Información del pomodoro + acceso a su configuración */}
+          {/* Resumen del pomodoro + acceso a su configuración */}
           {mode === 'pomodoro' && (
-            <div className="w-full max-w-[340px] mt-4 rounded-2xl bg-[#f7f6f9] p-4">
-              <p className="eyebrow m-0 mb-2">Configuración del pomodoro</p>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-[#777]">
-                <span>Enfoque <b className="text-[#333]">{formatDurationLabel(timerSettings.pomodoroFocus)}</b></span>
-                <span>Descanso <b className="text-[#333]">{formatDurationLabel(timerSettings.pomodoroBreak)}</b></span>
-                <span>Largo <b className="text-[#333]">{formatDurationLabel(timerSettings.pomodoroLongBreak)}</b></span>
-                <span>Cada <b className="text-[#333]">{timerSettings.pomodoroLongBreakEvery}</b> sesiones</span>
-              </div>
-              <button onClick={() => setTimerSettingsOpen(true)} className="mt-3 w-full py-2.5 rounded-xl bg-white border border-[#e8e6f0] text-[13px] font-semibold text-[#7f70ff] cursor-pointer">Configurar pomodoro</button>
+            <div className="flex flex-col items-center gap-2 mt-5">
+              <p className="m-0 text-[13px] text-[#8b8b98] tabular-nums">
+                {timerSettings.pomodoroFocus} min · {timerSettings.pomodoroBreak} min · {timerSettings.pomodoroLongBreak} min · {pomodoroCycle}/{timerSettings.pomodoroLongBreakEvery}
+              </p>
+              <button
+                onClick={() => { setSettingsSection('pomodoro'); setTimerSettingsOpen(true); }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-[#f7f6f9] border-none cursor-pointer text-[13px] font-semibold text-[#7f70ff] active:scale-95 transition-transform"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+                Configurar pomodoro
+              </button>
             </div>
           )}
         </div>
 
         {/* Información de la sesión */}
-        <div className="max-w-[340px] mx-auto pb-28">
+        <div className="max-w-[340px] mx-auto pb-44">
           {/* Header con "Tasks" a la derecha */}
           <div className="flex items-center justify-between mb-1">
             <p className="text-[12px] font-bold uppercase tracking-wide text-[#999] m-0">Información de la sesión</p>
@@ -558,7 +574,10 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
       </div>
 
       {/* === Botones flotantes inferiores (ocultos con el teclado abierto) === */}
-      <div className={`flex items-center justify-center pt-2 shrink-0 ${isPhaseMode && hasStarted ? 'gap-4' : 'gap-10'} ${keyboardVisible ? 'hidden' : ''}`} style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 32px)' }}>
+      <div className={`pointer-events-none absolute inset-x-0 bottom-0 z-30 ${keyboardVisible ? 'hidden' : ''}`}>
+        {/* Velo suave: los botones flotan sobre el contenido sin una franja sólida */}
+        <div className="absolute inset-x-0 bottom-0 h-[150px] bg-gradient-to-t from-white via-white/85 to-transparent" />
+        <div className={`relative flex items-center justify-center pt-8 pointer-events-auto ${isPhaseMode && hasStarted ? 'gap-4' : 'gap-10'}`} style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 28px)' }}>
         {/* Cancelar */}
         {manualMode || hasStarted ? (
           <button onClick={() => (manualMode ? setManualMode(false) : handleXClick())} className="w-[52px] h-[52px] rounded-full bg-white border-none cursor-pointer flex items-center justify-center shadow-[4px_4px_10px_#e6e6e6,-4px_-4px_10px_#ffffff] active:shadow-[inset_2px_2px_5px_#e6e6e6,inset_-2px_-2px_5px_#ffffff] active:scale-[0.88] transition-all">
@@ -609,6 +628,7 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
         ) : (
           <div className="w-[56px]" />
         )}
+        </div>
       </div>
 
       {/* Confirmación de descarte */}
@@ -683,7 +703,13 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
       <ActivityPicker isOpen={pickerOpen} onClose={() => setPickerOpen(false)} activities={props.activities} selectedId={props.draft.activityId} onSelect={(id) => { props.onActivityChange(id); setPickerOpen(false); }} />
       <TaskPicker isOpen={taskPickerOpen} onClose={() => setTaskPickerOpen(false)} lists={taskLists} tasks={tasks} onSelect={handleSelectTask} />
       <AnimatePresence>
-        {timerSettingsOpen && <TimerSettingsScreen key="timer-settings" onBack={() => setTimerSettingsOpen(false)} />}
+        {timerSettingsOpen && (
+          <TimerSettingsScreen
+            key="timer-settings"
+            initialSection={settingsSection}
+            onBack={() => { setTimerSettingsOpen(false); setSettingsSection(undefined); }}
+          />
+        )}
       </AnimatePresence>
 
       {/* Modo concentración: reloj y lo esencial, sin la pantalla de edición */}
@@ -692,12 +718,14 @@ export function FocusScreen({ onBack, taskLists, tasks, onNotesChange, onDiscard
           <FocusModeScreen
             key="focus-mode"
             theme={timerSettings.focusTheme}
+            appearance={timerSettings.focusAppearance}
             timeDisplay={timeDisplay}
             progress={progress}
             color={ringColor}
             title={props.draft.description?.trim() || activity?.name || ''}
             isRunning={isRunning}
             keepScreenOn={timerSettings.keepScreenOn}
+            pomodoro={mode === 'pomodoro' ? { done: pomodoroCycle, total: timerSettings.pomodoroLongBreakEvery } : null}
             onToggle={handleCenterButton}
             onSkip={isPhaseMode ? handleSkipPhase : undefined}
             onFinish={() => { setFocusMode(false); onSaveSession(false, selectedTask?.id ?? props.draft.taskId); }}

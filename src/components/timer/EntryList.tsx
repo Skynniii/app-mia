@@ -2,6 +2,7 @@ import { memo, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { dayLabel, formatElapsed, isoToDateKey } from '../../hooks/useTimeTracker';
 import { useSettings } from '../../context/SettingsContext';
+import { sessionModeLabel } from '../../utils/sessionMode';
 import type { Activity, TimeSession } from '../../types';
 
 interface Props {
@@ -127,7 +128,12 @@ export const EntryList = memo(function EntryList({ entries, activities, onSelect
                                 <span className="w-1 h-6 rounded-full shrink-0" style={{ background: ag.color }} />
                                 <div className="flex-1 min-w-0">
                                   <p className="text-[12px] text-[#999] truncate m-0">{e.description || 'Sin descripción'}</p>
-                                  <p className="text-[11px] text-[#b0b0b0] m-0">{fmtTime(e.startTime)} – {fmtTime(e.endTime)}</p>
+                                  <p className="text-[11px] text-[#b0b0b0] m-0 flex items-center gap-1.5">
+                                    <span className="tabular-nums">{fmtTime(e.startTime)} – {fmtTime(e.endTime)}</span>
+                                    {sessionModeLabel(e.mode) && (
+                                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-[#f4f2fa] text-[#8b85a3] shrink-0">{sessionModeLabel(e.mode)}</span>
+                                    )}
+                                  </p>
                                 </div>
                                 <span className="text-[12px] font-semibold text-[#555] tabular-nums shrink-0">{formatElapsed(e.duration)}</span>
                               </button>

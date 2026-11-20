@@ -1,8 +1,8 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useBackHandler } from '../../hooks/useBackHandler';
 import { useSettings } from '../../context/SettingsContext';
-import { useTimerSettings, FOCUS_THEMES, type CustomInterval } from '../../hooks/useTimerSettings';
+import { useTimerSettings, FOCUS_THEMES, FOCUS_APPEARANCES, TIMER_ADJUST_OPTIONS, type CustomInterval } from '../../hooks/useTimerSettings';
 import { ALARM_SOUNDS, playAlarmPreview } from '../../utils/alarm';
 import { CustomDurationModal } from './CustomDurationModal';
 import { IntervalFormModal } from './IntervalFormModal';
@@ -10,9 +10,12 @@ import { BackButton, DETAIL_HEADER_TOP } from '../ui/DetailScreen';
 
 interface Props {
   onBack: () => void;
+  /** Sección a la que se desplaza al abrir (por ejemplo, desde el pomodoro). */
+  initialSection?: 'pomodoro';
 }
 
 type DurationKey = 'pomodoroFocus' | 'pomodoroBreak' | 'pomodoroLongBreak';
+type AlarmTarget = 'timer' | 'pomodoro';
 
 const DURATION_ROWS: { key: DurationKey; label: string; hint: string }[] = [
   { key: 'pomodoroFocus', label: 'Duración del enfoque', hint: 'Tiempo de trabajo por sesión' },
@@ -77,15 +80,23 @@ function Row({ label, hint, children, onClick }: { label: string; hint?: string;
 }
 
 /** Configuración exclusiva de la sección Timer, ordenada por modo. */
-export function TimerSettingsScreen({ onBack }: Props) {
+export function TimerSettingsScreen({ onBack, initialSection }: Props) {
   useBackHandler(true, onBack);
   const { timerSettings, updateTimerSettings } = useTimerSettings();
   const { settings, update } = useSettings();
   const [durationKey, setDurationKey] = useState<DurationKey | null>(null);
   const [intervalForm, setIntervalForm] = useState<{ open: boolean; interval: CustomInterval | null }>({ open: false, interval: null });
-  const [alarmOpen, setAlarmOpen] = useState(false);
+  const [alarmTarget, setAlarmTarget] = useState<AlarmTarget | null>(null);
+  const pomodoroRef = useRef<HTMLDivElement>(null);
   // El botón atrás cierra primero la hoja del sonido de alarma.
-  useBackHandler(alarmOpen, () => setAlarmOpen(false));
+  useBackHandler(alarmTarget !== null, () => setAlarmTarget(null));
+
+  // Abrir la configuración desde el pomodoro lleva directo a su sección.
+  useEffect(() => {
+    if (initialSection !== 'pomodoro') return;
+    const id = requestAnimationFrame(() => pomodoroRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    return () => cancelAnimationFrame(id);
+  }, [initialSection]);
 
   const saveInterval = (iv: CustomInterval) => {
     updateTimerSettings('intervals', [
@@ -97,6 +108,8 @@ export function TimerSettingsScreen({ onBack }: Props) {
   const deleteInterval = (id: string) => {
     updateTimerSettings('intervals', timerSettings.intervals.filter((i) => i.id !== id));
   };
+
+  const alarmSound = alarmTarget === 'pomodoro' ? timerSettings.pomodoroAlarmSound : timerSettings.timerAlarmSound;
 
   return (
     <motion.div
@@ -117,48 +130,69 @@ export function TimerSettingsScreen({ onBack }: Props) {
       </div>
 
       <div className="flex-1 px-4 pb-[100px]">
-        {/* RASTREADOR */}
-        <SectionTitle>Rastreador</SectionTitle>
-        <p className="text-[13px] text-[#999] m-0">El cronómetro no tiene ajustes propios. El registro manual está en el botón de calendario.</p>
-
         {/* TEMPORIZADOR */}
         <SectionTitle>Temporizador</SectionTitle>
         <div className="space-y-3">
-          <Row label="Sonido de alarma" hint="Suena al terminar el temporizador" onClick={() => setAlarmOpen(true)}>
+          <Row label="Sonido de alarma" hint="Suena al terminar el temporizador" onClick={() => setAlarmTarget('timer')}>
             {ALARM_SOUNDS.find((s) => s.id === timerSettings.timerAlarmSound)?.name ?? 'Campana'}
           </Row>
           <Row label="Vibración" hint="Vibra junto con la alarma">
             <Toggle on={timerSettings.timerAlarmVibrate} onChange={(v) => updateTimerSettings('timerAlarmVibrate', v)} />
           </Row>
+          <Row label="Botones − / +" hint="Minutos que suman o restan">
+            <div className="flex items-center gap-1 rounded-full bg-white p-1 border border-[#e8e8ed]">
+              {TIMER_ADJUST_OPTIONS.map((min) => {
+                const active = timerSettings.timerAdjustMinutes === min;
+                return (
+                  <button
+                    key={min}
+                    type="button"
+                    onClick={() => updateTimerSettings('timerAdjustMinutes', min)}
+                    className={`px-2.5 py-1 rounded-full text-[13px] font-semibold border-none cursor-pointer transition-colors ${active ? 'bg-[#7f70ff] text-white' : 'bg-transparent text-[#999]'}`}
+                  >
+                    {min}
+                  </button>
+                );
+              })}
+            </div>
+          </Row>
         </div>
 
         {/* POMODORO */}
-        <SectionTitle>Pomodoro</SectionTitle>
-        <div className="space-y-3">
-          {DURATION_ROWS.map((row) => (
-            <Row key={row.key} label={row.label} hint={row.hint} onClick={() => setDurationKey(row.key)}>
-              {formatMinutes(timerSettings[row.key])}
+        <div ref={pomodoroRef} className="scroll-mt-24">
+          <SectionTitle>Pomodoro</SectionTitle>
+          <div className="space-y-3">
+            {DURATION_ROWS.map((row) => (
+              <Row key={row.key} label={row.label} hint={row.hint} onClick={() => setDurationKey(row.key)}>
+                {formatMinutes(timerSettings[row.key])}
+              </Row>
+            ))}
+            <Row label="Descanso largo cada" hint="Sesiones de enfoque por ciclo">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => updateTimerSettings('pomodoroLongBreakEvery', Math.max(2, timerSettings.pomodoroLongBreakEvery - 1))}
+                  className="w-8 h-8 rounded-full bg-white border border-[#e8e8ed] cursor-pointer flex items-center justify-center text-[#7f70ff] active:scale-90 transition-transform"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                </button>
+                <span className="w-[52px] text-center tabular-nums text-[#333]">{timerSettings.pomodoroLongBreakEvery} ses.</span>
+                <button
+                  type="button"
+                  onClick={() => updateTimerSettings('pomodoroLongBreakEvery', Math.min(12, timerSettings.pomodoroLongBreakEvery + 1))}
+                  className="w-8 h-8 rounded-full bg-white border border-[#e8e8ed] cursor-pointer flex items-center justify-center text-[#7f70ff] active:scale-90 transition-transform"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                </button>
+              </div>
             </Row>
-          ))}
-          <Row label="Descanso largo cada" hint="Sesiones de enfoque por ciclo">
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => updateTimerSettings('pomodoroLongBreakEvery', Math.max(2, timerSettings.pomodoroLongBreakEvery - 1))}
-                className="w-8 h-8 rounded-full bg-white border border-[#e8e8ed] cursor-pointer flex items-center justify-center text-[#7f70ff] active:scale-90 transition-transform"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
-              </button>
-              <span className="w-[52px] text-center tabular-nums text-[#333]">{timerSettings.pomodoroLongBreakEvery} ses.</span>
-              <button
-                type="button"
-                onClick={() => updateTimerSettings('pomodoroLongBreakEvery', Math.min(12, timerSettings.pomodoroLongBreakEvery + 1))}
-                className="w-8 h-8 rounded-full bg-white border border-[#e8e8ed] cursor-pointer flex items-center justify-center text-[#7f70ff] active:scale-90 transition-transform"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-              </button>
-            </div>
-          </Row>
+            <Row label="Inicio automático" hint="Avisa y arranca la siguiente sesión">
+              <Toggle on={timerSettings.pomodoroAutoStart} onChange={(v) => updateTimerSettings('pomodoroAutoStart', v)} />
+            </Row>
+            <Row label="Sonido de alarma" hint="Suena al completar el pomodoro" onClick={() => setAlarmTarget('pomodoro')}>
+              {ALARM_SOUNDS.find((s) => s.id === timerSettings.pomodoroAlarmSound)?.name ?? 'Suave'}
+            </Row>
+          </div>
         </div>
 
         {/* INTERVALOS */}
@@ -178,6 +212,7 @@ export function TimerSettingsScreen({ onBack }: Props) {
                 <span className="block text-[15px] font-semibold text-[#333] truncate">{iv.name}</span>
                 <span className="block text-[13px] text-[#999] mt-0.5">
                   {formatMinutes(iv.focusMin)} · {formatMinutes(iv.restMin)} descanso · {iv.rounds} rondas
+                  {iv.extras.length > 0 ? ` · +${iv.extras.length} extra` : ''}
                 </span>
               </span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ccc" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
@@ -195,9 +230,27 @@ export function TimerSettingsScreen({ onBack }: Props) {
         {/* CONCENTRACIÓN */}
         <SectionTitle>Concentración</SectionTitle>
         <div className="rounded-2xl border border-[#eee] bg-[#f8f8fa] p-4 mb-3">
-          <p className="text-[15px] font-semibold text-[#333] m-0">Tema</p>
+          <p className="text-[15px] font-semibold text-[#333] m-0">Fondo</p>
+          <p className="text-[13px] text-[#999] m-0 mt-0.5">Claro u oscuro</p>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            {FOCUS_APPEARANCES.map((a) => {
+              const active = timerSettings.focusAppearance === a.id;
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => updateTimerSettings('focusAppearance', a.id)}
+                  className={`py-2.5 rounded-xl border cursor-pointer text-[13px] font-semibold transition-colors ${active ? 'border-[#7f70ff] bg-white text-[#7f70ff]' : 'border-transparent bg-white/60 text-[#888]'}`}
+                >
+                  {a.name}
+                </button>
+              );
+            })}
+          </div>
+
+          <p className="text-[15px] font-semibold text-[#333] m-0 mt-4">Estilo</p>
           <p className="text-[13px] text-[#999] m-0 mt-0.5">Aspecto de la pantalla enfocada</p>
-          <div className="grid grid-cols-3 gap-2 mt-3">
+          <div className="grid grid-cols-2 gap-2 mt-3">
             {FOCUS_THEMES.map((t) => {
               const active = timerSettings.focusTheme === t.id;
               return (
@@ -254,13 +307,13 @@ export function TimerSettingsScreen({ onBack }: Props) {
 
       {/* Selector de sonido de alarma (cada opción se escucha al tocarla) */}
       <AnimatePresence>
-        {alarmOpen && (
+        {alarmTarget !== null && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[1200] bg-black/30 flex items-end"
-            onClick={() => setAlarmOpen(false)}
+            onClick={() => setAlarmTarget(null)}
           >
             <motion.div
               initial={{ y: '100%' }}
@@ -274,12 +327,16 @@ export function TimerSettingsScreen({ onBack }: Props) {
               <h3 className="text-[17px] font-bold text-[#1c1c23] m-0 mb-3 tracking-[-0.02em]">Sonido de alarma</h3>
               <div className="space-y-2">
                 {ALARM_SOUNDS.map((s) => {
-                  const active = timerSettings.timerAlarmSound === s.id;
+                  const active = alarmSound === s.id;
                   return (
                     <button
                       key={s.id}
                       type="button"
-                      onClick={() => { updateTimerSettings('timerAlarmSound', s.id); playAlarmPreview(s.id); }}
+                      onClick={() => {
+                        if (alarmTarget === 'pomodoro') updateTimerSettings('pomodoroAlarmSound', s.id);
+                        else updateTimerSettings('timerAlarmSound', s.id);
+                        playAlarmPreview(s.id);
+                      }}
                       className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border cursor-pointer text-left ${active ? 'border-[#7f70ff] bg-[#f5f3ff]' : 'border-[#eee] bg-[#f8f8fa]'}`}
                     >
                       <span className="min-w-0">
@@ -297,7 +354,7 @@ export function TimerSettingsScreen({ onBack }: Props) {
               </div>
               <button
                 type="button"
-                onClick={() => setAlarmOpen(false)}
+                onClick={() => setAlarmTarget(null)}
                 className="mt-4 w-full py-3 rounded-2xl bg-[#f7f6f9] border-none text-[14px] font-semibold text-[#555] cursor-pointer"
               >
                 Listo

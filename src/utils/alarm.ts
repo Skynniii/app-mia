@@ -79,10 +79,26 @@ const PATTERNS: Record<AlarmSoundId, { period: number; notes: Note[]; vibrate: n
   },
 };
 
-function playPattern(sound: AlarmSoundId) {
-  const audio = getCtx();
-  if (!audio) return;
-  const { notes } = PATTERNS[sound];
+/** Avisos cortos al cambiar de sesión en el pomodoro. */
+export type PhaseSoundKind = 'focus' | 'break' | 'longBreak';
+
+const PHASE_PATTERNS: Record<PhaseSoundKind, Note[]> = {
+  focus: [
+    { freq: 587.33, at: 0, dur: 0.18, gain: 0.16 },
+    { freq: 880, at: 0.1, dur: 0.3, gain: 0.14 },
+  ],
+  break: [
+    { freq: 659.25, at: 0, dur: 0.2, type: 'triangle', gain: 0.15 },
+    { freq: 493.88, at: 0.11, dur: 0.3, type: 'triangle', gain: 0.13 },
+  ],
+  longBreak: [
+    { freq: 523.25, at: 0, dur: 0.16, gain: 0.13 },
+    { freq: 659.25, at: 0.09, dur: 0.16, gain: 0.13 },
+    { freq: 987.77, at: 0.18, dur: 0.34, gain: 0.1 },
+  ],
+};
+
+function playNotes(audio: AudioContext, notes: Note[]) {
   const t0 = audio.currentTime + 0.02;
 
   notes.forEach((n) => {
@@ -102,9 +118,22 @@ function playPattern(sound: AlarmSoundId) {
   });
 }
 
+function playPattern(sound: AlarmSoundId) {
+  const audio = getCtx();
+  if (!audio) return;
+  playNotes(audio, PATTERNS[sound].notes);
+}
+
 /** Una pasada del sonido, para la vista previa de los ajustes. */
 export function playAlarmPreview(sound: AlarmSoundId) {
   playPattern(sound);
+}
+
+/** Aviso corto que indica el inicio de la siguiente sesión del pomodoro. */
+export function playPhaseSound(kind: PhaseSoundKind) {
+  const audio = getCtx();
+  if (!audio) return;
+  playNotes(audio, PHASE_PATTERNS[kind]);
 }
 
 /**

@@ -24,14 +24,22 @@ const CONTAINER_HEIGHT = ITEM_HEIGHT * VISIBLE_ITEMS;
 export function WheelPicker({ value, min, max, onChange, variant = 'boxed' }: { value: number; min: number; max: number; onChange: (n: number) => void; variant?: 'boxed' | 'flat' }) {
   const ref = useRef<HTMLDivElement>(null);
   const isScrollingRef = useRef(false);
+  const mountedRef = useRef(false);
 
   const items = [];
   for (let i = min; i <= max; i++) items.push(i);
 
+  // Cambios de valor que no vienen del propio scroll (por ejemplo, al tocar una
+  // duración reciente) hacen rodar la rueda hasta el nuevo tiempo.
   useEffect(() => {
-    if (ref.current && !isScrollingRef.current) {
-      ref.current.scrollTop = (value - min) * ITEM_HEIGHT;
+    if (!ref.current || isScrollingRef.current) return;
+    const top = (value - min) * ITEM_HEIGHT;
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      ref.current.scrollTop = top;
+      return;
     }
+    ref.current.scrollTo({ top, behavior: 'smooth' });
   }, [value, min]);
 
   const handleScroll = () => {

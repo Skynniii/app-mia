@@ -2,6 +2,14 @@ import { useMemo } from 'react';
 import { useUserStorage } from './useUserStorage';
 import type { AlarmSoundId } from '../utils/alarm';
 
+/** Intervalo extra dentro de un intervalo propio (máximo 5). */
+export interface IntervalExtra {
+  id: string;
+  name: string;
+  /** Minutos que dura el intervalo extra. */
+  minutes: number;
+}
+
 /** Intervalo personalizado del modo "Intervalos". */
 export interface CustomInterval {
   id: string;
@@ -12,16 +20,31 @@ export interface CustomInterval {
   restMin: number;
   /** Cuántas rondas de enfoque tiene el intervalo. */
   rounds: number;
+  /** Intervalos propios que se añaden tras el descanso de cada ronda. */
+  extras: IntervalExtra[];
 }
 
+/** Máximo de intervalos extra que admite un intervalo propio. */
+export const MAX_INTERVAL_EXTRAS = 5;
+
 /** Tema visual del modo concentración. */
-export type FocusTheme = 'anillo' | 'numeros' | 'onda';
+export type FocusTheme = 'anillo' | 'numeros';
+
+/** Fondo claro u oscuro del modo concentración. */
+export type FocusAppearance = 'light' | 'dark';
 
 export const FOCUS_THEMES: { id: FocusTheme; name: string; hint: string }[] = [
   { id: 'anillo', name: 'Anillo', hint: 'Reloj y aro' },
-  { id: 'numeros', name: 'Números', hint: 'Negro y luz' },
-  { id: 'onda', name: 'Onda', hint: 'Ondas suaves' },
+  { id: 'numeros', name: 'Números', hint: 'Cifras grandes' },
 ];
+
+export const FOCUS_APPEARANCES: { id: FocusAppearance; name: string }[] = [
+  { id: 'light', name: 'Clara' },
+  { id: 'dark', name: 'Oscura' },
+];
+
+/** Minutos que suman o restan los botones − / + del temporizador. */
+export const TIMER_ADJUST_OPTIONS = [1, 2, 5, 10];
 
 export interface TimerSettings {
   pomodoroFocus: number;
@@ -29,8 +52,14 @@ export interface TimerSettings {
   pomodoroLongBreak: number;
   /** Cada cuántas sesiones de enfoque toca el descanso largo. */
   pomodoroLongBreakEvery: number;
+  /** Inicia sola la siguiente sesión (enfoque o descanso) con un aviso sonoro. */
+  pomodoroAutoStart: boolean;
+  /** Sonido de la alarma que suena al completar el pomodoro. */
+  pomodoroAlarmSound: AlarmSoundId;
   /** Últimas duraciones usadas en el temporizador (minutos, distintas). */
   recentDurations: number[];
+  /** Minutos que suman o restan los botones − / + del temporizador. */
+  timerAdjustMinutes: number;
   intervals: CustomInterval[];
   /** Sonido de la alarma que suena al terminar el temporizador. */
   timerAlarmSound: AlarmSoundId;
@@ -42,6 +71,8 @@ export interface TimerSettings {
   keepScreenOn: boolean;
   /** Tema del modo concentración. */
   focusTheme: FocusTheme;
+  /** Fondo claro u oscuro del modo concentración. */
+  focusAppearance: FocusAppearance;
 }
 
 export const TIMER_SETTINGS_DEFAULTS: TimerSettings = {
@@ -49,13 +80,17 @@ export const TIMER_SETTINGS_DEFAULTS: TimerSettings = {
   pomodoroBreak: 5,
   pomodoroLongBreak: 15,
   pomodoroLongBreakEvery: 4,
+  pomodoroAutoStart: true,
+  pomodoroAlarmSound: 'suave',
   recentDurations: [],
+  timerAdjustMinutes: 1,
   intervals: [],
   timerAlarmSound: 'campana',
   timerAlarmVibrate: true,
   startInFocusMode: false,
   keepScreenOn: true,
   focusTheme: 'anillo',
+  focusAppearance: 'light',
 };
 
 /** Duraciones sugeridas cuando todavía no hay ninguna registrada. */
@@ -68,8 +103,17 @@ const DEFAULT_DURATIONS = [5, 10, 30, 60];
  */
 export function useTimerSettings() {
   const [stored, setStored] = useUserStorage<TimerSettings>('timer-settings', TIMER_SETTINGS_DEFAULTS);
-  // Los ajustes guardados pueden no tener las claves nuevas: se completan con los valores por defecto.
-  const timerSettings = useMemo<TimerSettings>(() => ({ ...TIMER_SETTINGS_DEFAULTS, ...stored }), [stored]);
+  // Los ajustes guardados pueden no tener las claves nuevas (o venir del tema
+  // "onda", ya retirado): se completan y se normalizan con los valores actuales.
+  const timerSettings = useMemo<TimerSettings>(() => {
+    const merged = { ...TIMER_SETTINGS_DEFAULTS, ...stored };
+    return {
+      ...merged,
+      focusTheme: merged.focusTheme === 'numeros' ? 'numeros' : 'anillo',
+      focusAppearance: merged.focusAppearance === 'dark' ? 'dark' : 'light',
+      intervals: (merged.intervals ?? []).map((iv) => ({ ...iv, extras: iv.extras ?? [] })),
+    };
+  }, [stored]);
 
   const update = <K extends keyof TimerSettings>(key: K, value: TimerSettings[K]) =>
     setStored((prev) => ({ ...TIMER_SETTINGS_DEFAULTS, ...prev, [key]: value }));

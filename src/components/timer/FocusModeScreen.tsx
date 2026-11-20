@@ -1,11 +1,13 @@
+import { Fragment } from 'react';
 import { motion } from 'framer-motion';
 import { useBackHandler } from '../../hooks/useBackHandler';
 import { useWakeLock } from '../../hooks/useWakeLock';
 import { FocusRing } from './FocusRing';
-import type { FocusTheme } from '../../hooks/useTimerSettings';
+import type { FocusAppearance, FocusTheme } from '../../hooks/useTimerSettings';
 
 interface Props {
   theme: FocusTheme;
+  appearance: FocusAppearance;
   timeDisplay: string;
   progress: number;
   color: string;
@@ -13,6 +15,8 @@ interface Props {
   title: string;
   isRunning: boolean;
   keepScreenOn: boolean;
+  /** Sesiones del pomodoro en curso: completadas y totales. */
+  pomodoro?: { done: number; total: number } | null;
   onToggle: () => void;
   onFinish: () => void;
   onSkip?: () => void;
@@ -22,32 +26,38 @@ interface Props {
 const KEYFRAMES = `
 @keyframes focus-orb-a{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(70px,50px,0) scale(1.18)}}
 @keyframes focus-orb-b{0%,100%{transform:translate3d(0,0,0) scale(1.12)}50%{transform:translate3d(-60px,-70px,0) scale(0.92)}}
-@keyframes focus-wave{0%{transform:scale(0.62);opacity:0}18%{opacity:0.45}100%{transform:scale(2.15);opacity:0}}
 @keyframes focus-breath{0%,100%{opacity:0.35;transform:scale(1)}50%{opacity:0.7;transform:scale(1.06)}}
 .anim-focus-orb-a{animation:focus-orb-a 16s ease-in-out infinite;will-change:transform}
 .anim-focus-orb-b{animation:focus-orb-b 20s ease-in-out infinite;will-change:transform}
-.anim-focus-wave{animation:focus-wave 6s ease-out infinite;will-change:transform,opacity}
 .anim-focus-breath{animation:focus-breath 5s ease-in-out infinite;will-change:opacity,transform}
 `;
 
-const THEME_BACKGROUND: Record<FocusTheme, string> = {
-  anillo: '#fbfaff',
-  numeros: '#000000',
-  onda: 'linear-gradient(165deg,#170f26 0%,#241433 55%,#0f0a18 100%)',
-};
+/** "HH:MM:SS" → "MM:SS" cuando no hay horas, o "H:MM:SS" cuando las hay. */
+function compactTime(time: string): string {
+  const parts = time.split(':');
+  if (parts.length < 3) return time;
+  const [h, m, s] = parts;
+  return h === '00' ? `${m}:${s}` : `${Number(h)}:${m}:${s}`;
+}
 
 /** Pantalla del modo concentración: solo el reloj, la actividad y lo esencial. */
-export function FocusModeScreen({ theme, timeDisplay, progress, color, title, isRunning, keepScreenOn, onToggle, onFinish, onSkip, onExit }: Props) {
+export function FocusModeScreen({ theme, appearance, timeDisplay, progress, color, title, isRunning, keepScreenOn, pomodoro, onToggle, onFinish, onSkip, onExit }: Props) {
   useBackHandler(true, onExit);
   useWakeLock(keepScreenOn);
 
-  const dark = theme !== 'anillo';
-  const softButton = dark
-    ? 'bg-white/[0.06] text-white/35'
-    : 'bg-[#f1eff7] text-[#b6b2c4]';
-  const mainButton = dark
-    ? 'bg-white/10 text-white/80'
-    : 'bg-[#e9e6f4] text-[#8b85a3]';
+  const dark = appearance === 'dark';
+  const background = dark ? '#000000' : '#fbfaff';
+  const ink = dark ? '#ffffff' : '#1c1c23';
+  const muted = dark ? 'rgba(255,255,255,0.42)' : '#a8a4b6';
+  const track = dark ? 'rgba(255,255,255,0.1)' : '#eceaf3';
+  const softButton = dark ? 'bg-white/[0.06] text-white/35' : 'bg-[#f1eff7] text-[#b6b2c4]';
+  const mainButton = dark ? 'bg-white/10 text-white/80' : 'bg-[#e9e6f4] text-[#8b85a3]';
+  const panelBg = dark ? '#151519' : '#ffffff';
+
+  const compact = compactTime(timeDisplay);
+  const groups = compact.split(':');
+
+  const sessions = pomodoro && pomodoro.total > 0 ? pomodoro : null;
 
   return (
     <motion.div
@@ -56,63 +66,92 @@ export function FocusModeScreen({ theme, timeDisplay, progress, color, title, is
       exit={{ opacity: 0 }}
       transition={{ duration: 0.25, ease: 'easeOut' }}
       className="fixed inset-0 z-[10040] flex flex-col overflow-hidden"
-      style={{ background: THEME_BACKGROUND[theme] }}
+      style={{ background }}
     >
       <style>{KEYFRAMES}</style>
 
       {/* Fondos animados */}
-      {theme === 'anillo' && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="w-[340px] h-[340px] rounded-full anim-focus-breath blur-[70px]" style={{ background: `${color}22` }} />
-        </div>
-      )}
-      {theme === 'numeros' && (
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="absolute -top-[15%] -left-[25%] w-[420px] h-[420px] rounded-full blur-[90px] anim-focus-orb-a" style={{ background: '#3b2bff', opacity: 0.3 }} />
-          <div className="absolute -bottom-[10%] -right-[20%] w-[380px] h-[380px] rounded-full blur-[90px] anim-focus-orb-b" style={{ background: '#8a2be2', opacity: 0.22 }} />
-        </div>
-      )}
-      {theme === 'onda' && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          {[0, 1, 2, 3].map((i) => (
-            <span
-              key={i}
-              className="absolute w-[220px] h-[220px] rounded-full border anim-focus-wave"
-              style={{ borderColor: `${color}33`, animationDelay: `${i * 1.5}s` }}
-            />
-          ))}
-        </div>
-      )}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div
+          className="absolute -top-[12%] -left-[20%] w-[400px] h-[400px] rounded-full blur-[90px] anim-focus-orb-a"
+          style={{ background: color, opacity: dark ? 0.16 : 0.1 }}
+        />
+        <div
+          className="absolute -bottom-[12%] -right-[20%] w-[360px] h-[360px] rounded-full blur-[90px] anim-focus-orb-b"
+          style={{ background: '#8a2be2', opacity: dark ? 0.14 : 0.07 }}
+        />
+      </div>
 
       {/* Contenido */}
-      <div className="relative flex-1 flex flex-col items-center justify-center px-6">
-        {theme === 'anillo' && (
+      <div className="relative flex-1 flex flex-col items-center justify-center px-4">
+        {theme === 'anillo' ? (
           <>
-            <FocusRing progress={progress} color={color} size={260} stroke={5} trackColor="#eceaf3" shimmer={isRunning}>
-              <span className="text-[46px] font-light text-[#2c2a36] tabular-nums tracking-[-0.03em] leading-none">{timeDisplay}</span>
-            </FocusRing>
+            <div className="relative flex items-center justify-center">
+              {!dark && (
+                <div className="absolute w-[320px] h-[320px] rounded-full anim-focus-breath blur-[70px]" style={{ background: `${color}1f` }} />
+              )}
+              <FocusRing progress={progress} color={color} size={280} stroke={6} trackColor={track} shimmer={isRunning}>
+                <span className="font-light tabular-nums tracking-[-0.03em] leading-none" style={{ color: ink, fontSize: 46 }}>{compact}</span>
+              </FocusRing>
+            </div>
             {title && (
-              <p className="mt-9 mb-0 max-w-[260px] truncate text-[13px] uppercase tracking-[0.16em] text-[#a8a4b6] text-center">{title}</p>
+              <p className="mt-8 mb-0 max-w-[280px] truncate text-[14px] font-medium tracking-[-0.01em] text-center" style={{ color: muted }}>{title}</p>
             )}
           </>
-        )}
-
-        {theme === 'numeros' && (
+        ) : (
           <div className="flex flex-col items-center">
             <span
               className={`w-1.5 h-1.5 rounded-full mb-10 ${isRunning ? 'anim-dot-pulse' : ''}`}
-              style={{ background: isRunning ? color : 'rgba(255,255,255,0.25)' }}
+              style={{ background: isRunning ? color : muted }}
             />
-            <span className="text-[76px] font-thin text-white tabular-nums tracking-[-0.05em] leading-none">{timeDisplay}</span>
+            <div className="flex items-end justify-center gap-2">
+              {groups.map((g, i) => (
+                <Fragment key={i}>
+                  {i > 0 && (
+                    <span className="font-light leading-none pb-3" style={{ color: muted, fontSize: groups.length > 2 ? 34 : 46 }}>:</span>
+                  )}
+                  <span
+                    className="relative overflow-hidden rounded-[18px] px-3 py-2 font-light tabular-nums leading-none tracking-[-0.04em]"
+                    style={{
+                      background: panelBg,
+                      color: ink,
+                      fontSize: groups.length > 2 ? 'clamp(40px, 16vw, 68px)' : 'clamp(56px, 23vw, 92px)',
+                      boxShadow: dark ? '0 10px 30px rgba(0,0,0,0.55)' : '0 10px 26px rgba(28,28,35,0.08)',
+                    }}
+                  >
+                    <span className="absolute left-0 right-0 top-1/2 h-px" style={{ background: dark ? 'rgba(255,255,255,0.07)' : 'rgba(28,28,35,0.06)' }} />
+                    {g}
+                  </span>
+                </Fragment>
+              ))}
+            </div>
+            {title && (
+              <p className="mt-8 mb-0 max-w-[280px] truncate text-[14px] font-medium tracking-[-0.01em] text-center" style={{ color: muted }}>{title}</p>
+            )}
           </div>
         )}
 
-        {theme === 'onda' && (
-          <div className="flex flex-col items-center">
-            <span className="text-[58px] font-light text-white/90 tabular-nums tracking-[-0.04em] leading-none">{timeDisplay}</span>
-            {title && (
-              <span className="mt-6 max-w-[240px] truncate text-[12px] uppercase tracking-[0.24em] text-white/35">{title}</span>
-            )}
+        {/* Sesiones del pomodoro: barritas separadas por puntos */}
+        {sessions && (
+          <div className="mt-7 flex items-center gap-1.5">
+            {Array.from({ length: sessions.total }).map((_, i) => {
+              const done = i < sessions.done;
+              const current = i === sessions.done && isRunning;
+              return (
+                <Fragment key={i}>
+                  {i > 0 && <span className="w-[3px] h-[3px] rounded-full" style={{ background: muted, opacity: 0.5 }} />}
+                  <span
+                    className="rounded-full transition-colors duration-500"
+                    style={{
+                      width: 18,
+                      height: 4,
+                      background: done ? color : current ? `${color}66` : muted,
+                      opacity: done || current ? 1 : 0.28,
+                    }}
+                  />
+                </Fragment>
+              );
+            })}
           </div>
         )}
       </div>

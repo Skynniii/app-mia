@@ -15,6 +15,8 @@ import { SectionHeader } from '../ui/SectionHeader';
 import { TodaySummary } from './TodaySummary';
 import { FocusScreen } from './FocusScreen';
 import { TimerCompleteScreen } from './TimerCompleteScreen';
+import { PomodoroCompleteScreen } from './PomodoroCompleteScreen';
+import { playPhaseSound } from '../../utils/alarm';
 import { EntryList } from './EntryList';
 import { SessionDetailModal } from './SessionDetailModal';
 import type { Task, TaskList, TimerMode as AppTimerMode } from '../../types';
@@ -34,7 +36,11 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
   const [mode, setMode] = useUserStorage<TimerMode>('timer-mode', 'rastreador');
   const [pomodoroPhase, setPomodoroPhase] = useState<'work' | 'break' | 'longBreak'>('work');
   const [pomodoroCycle, setPomodoroCycle] = useState(0);
-  const [intervalRun, setIntervalRun] = useState<{ interval: CustomInterval; round: number; phase: 'focus' | 'rest' } | null>(null);
+  // Tiempo de enfoque acumulado en el pomodoro en curso (segundos).
+  const [pomodoroElapsed, setPomodoroElapsed] = useState(0);
+  // El pomodoro se completó: suena la alarma final hasta silenciarla.
+  const [pomodoroFinished, setPomodoroFinished] = useState(false);
+  const [intervalRun, setIntervalRun] = useState<{ interval: CustomInterval; round: number; phase: 'focus' | 'rest' | 'extra'; extraIndex: number } | null>(null);
   const [showFocus, setShowFocus] = useState(false);
   // Momento en que el temporizador llegó a cero: mientras no se silencie la
   // alarma, el tiempo extra se suma a la sesión.
@@ -107,33 +113,67 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
 
   const { setOnComplete, start: cdStart } = countdown;
 
-  // Siguiente fase del pomodoro, con las duraciones configuradas: al cerrar una
-  // sesión de enfoque toca descanso (o descanso largo cada N sesiones).
-  const advancePomodoro = () => {
+  const minutesOfPhase = (phase: 'work' | 'break' | 'longBreak') =>
+    phase === 'work' ? timerSettings.pomodoroFocus : phase === 'longBreak' ? timerSettings.pomodoroLongBreak : timerSettings.pomodoroBreak;
+
+  // Arranca la siguiente sesión del pomodoro. Con el inicio automático apagado
+  // deja el contador preparado y el usuario lo pone en marcha.
+  const startPomodoroPhase = (phase: 'work' | 'break' | 'longBreak') => {
+    if (settings.sounds) playPhaseSound(phase === 'work' ? 'focus' : phase === 'longBreak' ? 'longBreak' : 'break');
+    if (timerSettings.pomodoroAutoStart) cdStart(minutesOfPhase(phase) * 60);
+    else countdown.setTarget(minutesOfPhase(phase));
+  };
+
+  // Siguiente fase del pomodoro: enfoque → descanso (o largo al cerrar el ciclo).
+  // `skipped` distingue un salto manual (solo cuenta el tiempo hecho) de una
+  // sesión que llegó al final.
+  const advancePomodoro = (skipped = false) => {
     if (pomodoroPhase === 'work') {
+      const focusThisPhase = skipped ? Math.max(0, countdown.targetSeconds - countdown.remaining) : countdown.targetSeconds;
       const done = pomodoroCycle + 1;
+      setPomodoroElapsed((prev) => prev + focusThisPhase);
       setPomodoroCycle(done);
-      const isLong = done % Math.max(1, timerSettings.pomodoroLongBreakEvery) === 0;
-      setPomodoroPhase(isLong ? 'longBreak' : 'break');
-      cdStart((isLong ? timerSettings.pomodoroLongBreak : timerSettings.pomodoroBreak) * 60);
+      const nextPhase = done >= Math.max(1, timerSettings.pomodoroLongBreakEvery) ? 'longBreak' : 'break';
+      setPomodoroPhase(nextPhase);
+      startPomodoroPhase(nextPhase);
+    } else if (pomodoroPhase === 'longBreak') {
+      // Se cumplieron todas las sesiones: alarma final hasta que la silencie.
+      setPomodoroFinished(true);
     } else {
       setPomodoroPhase('work');
-      cdStart(timerSettings.pomodoroFocus * 60);
+      startPomodoroPhase('work');
     }
   };
 
-  // Siguiente fase del intervalo en curso: enfoque → descanso → siguiente ronda.
+  // Siguiente fase del intervalo en curso:
+  // enfoque → descanso → intervalos extra → siguiente ronda.
   const advanceInterval = () => {
     if (!intervalRun) return;
-    if (intervalRun.phase === 'focus') {
+    const { interval, round, phase, extraIndex } = intervalRun;
+    const extras = interval.extras ?? [];
+    if (phase === 'focus') {
       // Última ronda: el contador se queda en 00:00 para poder guardar la sesión.
-      if (intervalRun.round >= intervalRun.interval.rounds) return;
+      if (round >= interval.rounds) return;
       setIntervalRun({ ...intervalRun, phase: 'rest' });
-      cdStart(intervalRun.interval.restMin * 60);
+      cdStart(interval.restMin * 60);
+    } else if (phase === 'rest' && extras.length > 0) {
+      setIntervalRun({ ...intervalRun, phase: 'extra', extraIndex: 0 });
+      cdStart(extras[0].minutes * 60);
+    } else if (phase === 'extra' && extraIndex + 1 < extras.length) {
+      setIntervalRun({ ...intervalRun, phase: 'extra', extraIndex: extraIndex + 1 });
+      cdStart(extras[extraIndex + 1].minutes * 60);
     } else {
-      setIntervalRun({ ...intervalRun, round: intervalRun.round + 1, phase: 'focus' });
-      cdStart(intervalRun.interval.focusMin * 60);
+      setIntervalRun({ interval, round: round + 1, phase: 'focus', extraIndex: 0 });
+      cdStart(interval.focusMin * 60);
     }
+  };
+
+  // Vuelve el pomodoro a su estado inicial (enfoque, ciclo 0, sin tiempo).
+  const resetPomodoro = () => {
+    setPomodoroPhase('work');
+    setPomodoroCycle(0);
+    setPomodoroElapsed(0);
+    countdown.setTarget(timerSettings.pomodoroFocus);
   };
 
   // El temporizador guarda un callback fijo: se lee el estado más reciente por ref.
@@ -149,7 +189,7 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
         return;
       }
       if (settings.sounds) playCompleteSound();
-      if (mode === 'pomodoro') phaseHandlers.current.advancePomodoro();
+      if (mode === 'pomodoro') phaseHandlers.current.advancePomodoro(false);
       else if (mode === 'intervalos') phaseHandlers.current.advanceInterval();
     });
   }, [mode, settings.sounds, setOnComplete]);
@@ -157,21 +197,26 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
   const handleModeChange = (newMode: TimerMode) => {
     setMode(newMode);
     if (newMode === 'temporizador') countdown.setTarget(25);
-    else if (newMode === 'pomodoro') { countdown.setTarget(timerSettings.pomodoroFocus); setPomodoroPhase('work'); setPomodoroCycle(0); }
+    else if (newMode === 'pomodoro') { resetPomodoro(); }
     else if (newMode === 'intervalos') { setIntervalRun(null); countdown.reset(); }
   };
 
-  const handlePomodoroSkip = () => advancePomodoro();
+  const handlePomodoroSkip = () => advancePomodoro(true);
 
   const handleStartInterval = (interval: CustomInterval) => {
-    setIntervalRun({ interval, round: 1, phase: 'focus' });
+    setIntervalRun({ interval, round: 1, phase: 'focus', extraIndex: 0 });
     cdStart(interval.focusMin * 60);
   };
 
   const handleDiscard = () => {
     setTimerFinishedAt(null);
+    setPomodoroFinished(false);
     if (mode === 'rastreador') tracker.discard();
-    else { countdown.reset(); setIntervalRun(null); }
+    else {
+      if (mode === 'pomodoro') countdown.setTarget(timerSettings.pomodoroFocus);
+      else countdown.reset();
+      setIntervalRun(null); setPomodoroPhase('work'); setPomodoroCycle(0); setPomodoroElapsed(0);
+    }
     // Limpia taskId del draft para que no se herede en la próxima sesión
     tracker.setDraft((d) => ({ ...d, taskId: undefined, avanceTaskId: undefined }));
     setShowFocus(false);
@@ -186,9 +231,13 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
       setShowFocus(false);
       return;
     }
-    const elapsed = countdown.targetSeconds - countdown.remaining;
+    // El pomodoro registra todo el enfoque acumulado (aunque no se completara);
+    // el resto de modos, el tiempo de la cuenta en curso.
+    const elapsed = mode === 'pomodoro'
+      ? pomodoroElapsed + (pomodoroPhase === 'work' ? Math.max(0, countdown.targetSeconds - countdown.remaining) : 0)
+      : countdown.targetSeconds - countdown.remaining;
     if (elapsed >= 1) {
-      const timerMode: AppTimerMode = mode === 'pomodoro' ? 'pomodoro' : 'timer';
+      const timerMode: AppTimerMode = mode === 'pomodoro' ? 'pomodoro' : mode === 'intervalos' ? 'interval' : 'timer';
       await tracker.saveSession(elapsed, timerMode);
       if (settings.sounds) playCompleteSound();
     }
@@ -199,8 +248,13 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
         updateTimerSettings('recentDurations', [used, ...timerSettings.recentDurations.filter((m) => m !== used)].slice(0, 4));
       }
     }
-    countdown.reset();
+    // El pomodoro vuelve siempre a su enfoque configurado.
+    if (mode === 'pomodoro') countdown.setTarget(timerSettings.pomodoroFocus);
+    else countdown.reset();
     setIntervalRun(null);
+    setPomodoroPhase('work');
+    setPomodoroCycle(0);
+    setPomodoroElapsed(0);
     handleTaskAfterSession(actualTaskId, completeTask, avanceTaskId);
     // Limpia taskId del draft para que la próxima sesión no se asocie a esta tarea
     tracker.setDraft((d) => ({ ...d, taskId: undefined, avanceTaskId: undefined }));
@@ -227,6 +281,22 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
     setShowFocus(false);
   };
 
+  // Silenciar la alarma final del pomodoro guarda el enfoque acumulado.
+  const handleSilencePomodoro = async () => {
+    const focusSeconds = pomodoroElapsed;
+    const taskId = tracker.draft.taskId;
+    const avanceTaskId = tracker.draft.avanceTaskId;
+    setPomodoroFinished(false);
+    if (focusSeconds >= 1) await tracker.saveSession(focusSeconds, 'pomodoro');
+    setPomodoroPhase('work');
+    setPomodoroCycle(0);
+    setPomodoroElapsed(0);
+    countdown.setTarget(timerSettings.pomodoroFocus);
+    handleTaskAfterSession(taskId, false, avanceTaskId);
+    tracker.setDraft((d) => ({ ...d, taskId: undefined, avanceTaskId: undefined }));
+    setShowFocus(false);
+  };
+
   const historyEntries = useMemo(
     () => tracker.sessions.filter((e) => isoToDateKey(e.startTime) !== todayKey()),
     [tracker.sessions]
@@ -236,7 +306,10 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
 
   const isTimerActive = mode === 'rastreador'
     ? tracker.running !== null
-    : countdown.running || (countdown.remaining > 0 && countdown.remaining < countdown.targetSeconds);
+    : mode === 'pomodoro'
+      // Sigue activo entre sesiones cuando el inicio automático está apagado.
+      ? (countdown.running || countdown.remaining < countdown.targetSeconds || pomodoroCycle > 0)
+      : countdown.running || (countdown.remaining > 0 && countdown.remaining < countdown.targetSeconds);
 
   const activeElapsed = mode === 'rastreador'
     ? tracker.elapsed
@@ -256,7 +329,17 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
     onCreateActivity: (name: string, color: string) => tracker.addActivity(name, color),
     countdown, pomodoroPhase, pomodoroCycle, onPomodoroSkip: handlePomodoroSkip,
     intervalRun: intervalRun
-      ? { name: intervalRun.interval.name, round: intervalRun.round, rounds: intervalRun.interval.rounds, phase: intervalRun.phase }
+      ? {
+          name: intervalRun.interval.name,
+          round: intervalRun.round,
+          rounds: intervalRun.interval.rounds,
+          phase: intervalRun.phase,
+          phaseName: intervalRun.phase === 'focus'
+            ? 'Enfoque'
+            : intervalRun.phase === 'rest'
+              ? 'Descanso'
+              : (intervalRun.interval.extras?.[intervalRun.extraIndex]?.name || 'Extra'),
+        }
       : null,
     onStartInterval: handleStartInterval,
     onIntervalSkip: advanceInterval,
@@ -377,6 +460,22 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
             sound={timerSettings.timerAlarmSound}
             vibrate={timerSettings.timerAlarmVibrate}
             onSilence={handleSilenceAlarm}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Pomodoro completado: alarma final hasta que la silencie */}
+      <AnimatePresence>
+        {pomodoroFinished && (
+          <PomodoroCompleteScreen
+            key="pomodoro-complete"
+            focusSeconds={pomodoroElapsed}
+            sessionsDone={pomodoroCycle}
+            sessionsTotal={timerSettings.pomodoroLongBreakEvery}
+            soundEnabled={settings.sounds}
+            sound={timerSettings.pomodoroAlarmSound}
+            vibrate={timerSettings.timerAlarmVibrate}
+            onSilence={handleSilencePomodoro}
           />
         )}
       </AnimatePresence>

@@ -136,11 +136,20 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
   arranque automático y pantalla encendida. Avisos: sonidos y notificaciones.
 - Temporizador: antes de empezar se muestra el selector de horas y minutos
   (`WheelPicker` con `variant="flat"`, sin recuadro) y las duraciones recientes
-  (máximo 4 distintas; si no hay, 5/10/30/60). Los botones − / + de un minuto
-  **solo** existen con el temporizador ya en marcha y van debajo del anillo
-  (`countdown.addTime`, que mueve `remaining` y `targetSeconds` sin reiniciar).
-  El anillo aparece al iniciar. Las duraciones usadas se guardan al guardar la
-  sesión.
+  (máximo 4 distintas; si no hay, 5/10/30/60). Al tocar una duración reciente la
+  rueda rueda hasta ese tiempo (`scrollTo({ behavior: 'smooth' })` en
+  `WheelPicker`). El selector y el anillo se intercambian con
+  `AnimatePresence mode="wait"` (el reloj entra con muelle), no con un cambio
+  plano. Los botones − / + **solo** existen con el temporizador en marcha, van
+  debajo del anillo, muestran solo el signo y suman/restan
+  `timerAdjustMinutes` (1, 2, 5 o 10 min, ajustable en la configuración); usan
+  `countdown.addTime`, que mueve `remaining` y `targetSeconds` sin reiniciar. Las
+  duraciones usadas se guardan al guardar la sesión.
+- Anillo (`FocusRing`): se llena al empezar y se vacía con la cuenta. El
+  desplazamiento del trazo es **negativo** (`-circunferencia * (1 - progreso)`)
+  para que el hueco crezca en sentido horario, el mismo en el que gira el brillo.
+  El brillo blanco va dentro de una máscara con el arco que queda lleno, así que
+  se ve sobre la línea de color y se recorta a medida que el anillo se vacía.
 - Alarma del temporizador: al llegar a cero no se cierra la sesión. Se abre
   `TimerCompleteScreen` y suena en bucle el sonido elegido (`src/utils/alarm.ts`
   sintetiza cuatro alarmas con WebAudio; no hay archivos de audio) con la
@@ -151,18 +160,38 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
 - Modo concentración (`FocusModeScreen`): pantalla completa con el reloj, la
   descripción y botones descoloridos (salir, pausa, saltar y terminar). Se entra
   con el botón de la cabecera de `FocusScreen` mientras hay sesión activa, y
-  automáticamente al iniciar si `startInFocusMode` está activo. Tres temas
-  (`focusTheme`: anillo, números y onda) y `keepScreenOn` usa Screen Wake Lock
-  (`useWakeLock`).
+  automáticamente al iniciar si `startInFocusMode` está activo. Dos temas
+  (`focusTheme`: `anillo` y `numeros`) y fondo claro u oscuro
+  (`focusAppearance`); el tema retirado `onda` se normaliza a `anillo` en
+  `useTimerSettings`. El anillo mide 280 y el tiempo se muestra compacto
+  (`MM:SS` sin horas, `H:MM:SS` con horas) igual en ambos temas; el tema de
+  números pinta cada grupo en un panel tipo flip. Con pomodoro en marcha se ven
+  debajo las sesiones como barritas separadas por puntos. El título no va en
+  mayúsculas. `keepScreenOn` usa Screen Wake Lock (`useWakeLock`).
 - El registro manual (botón del calendario con +) solo existe en Rastreador.
-- Pomodoro: debajo del anillo va la tarjeta con la configuración actual y el botón
-  "Configurar pomodoro". Al terminar un enfoque toca descanso, y descanso largo
-  cada N sesiones (`pomodoroLongBreakEvery`).
+- Pomodoro: debajo del anillo va una línea con la configuración actual
+  (`25 min · 5 min · 15 min · 4/4`) y el botón "Configurar pomodoro", que abre
+  `TimerSettingsScreen` desplazada a su sección (`initialSection`). Secuencia:
+  enfoque → descanso → … → último enfoque → descanso largo → alarma final
+  (`PomodoroCompleteScreen`, suena hasta silenciarla y entonces se guarda el
+  enfoque acumulado). `pomodoroElapsed` acumula el enfoque de cada sesión (al
+  completar o al saltar), así que guardar a medias también registra lo hecho.
+  Con `pomodoroAutoStart` la siguiente sesión arranca sola y suena un aviso corto
+  distinto para enfoque, descanso y descanso largo (`playPhaseSound`); apagado,
+  deja el contador preparado y el usuario lo pone en marcha.
+- Registros: cada sesión se guarda con su modo (`stopwatch`, `timer`, `pomodoro`,
+  `interval`) y la lista de historial lo muestra como etiqueta
+  (`src/utils/sessionMode.ts`).
+- Barra inferior de `FocusScreen`: flota en absoluto sobre el contenido, con un
+  velo en degradado (sin franja sólida) y `pointer-events-none` fuera de los
+  botones. El contenido lleva `pb-44` para no quedar debajo.
 - Con pomodoro o intervalos en marcha la barra inferior tiene cuatro botones:
   X, play/pausa, saltar fase y check (pulsación larga = completar tarea).
 - Intervalos: cada intervalo propio tiene nombre, minutos de enfoque, minutos de
-  descanso y número de rondas; la fase alterna enfoque → descanso → siguiente
-  ronda y al acabar la última el contador se queda en 00:00 para guardar.
+  descanso, número de rondas y hasta 5 intervalos extra propios
+  (`MAX_INTERVAL_EXTRAS`, nombre y minutos editables). La fase alterna enfoque →
+  descanso → intervalos extra → siguiente ronda; al acabar el último enfoque el
+  contador se queda en 00:00 para guardar.
 
 ## Sección Calendario
 

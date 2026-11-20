@@ -10,6 +10,7 @@ import { TimePickerModal } from '../tareas/TimePickerModal';
 import { ActivityPicker } from './ActivityPicker';
 import { TaskPicker } from './TaskPicker';
 import { clampNotes, limitBeforeInput } from '../../utils/notesLimit';
+import { sessionModeLabel } from '../../utils/sessionMode';
 import { BackButton, DETAIL_HEADER_TOP } from '../ui/DetailScreen';
 
 interface Props {
@@ -173,6 +174,9 @@ export function SessionDetailModal({ entry, onUpdate, onDelete, onClose, tasks, 
       <div className="flex-1 overflow-y-auto no-scrollbar px-5 py-4">
         <div className="text-center mt-3 mb-9">
           <p className="text-[40px] font-bold text-[#333] tabular-nums m-0 leading-none">{formatElapsed(entry.duration)}</p>
+          {sessionModeLabel(entry.mode) && (
+            <span className="inline-block mt-3 text-[11px] font-semibold px-2 py-1 rounded-md bg-[#f4f2fa] text-[#8b85a3]">{sessionModeLabel(entry.mode)}</span>
+          )}
         </div>
 
         {/* Botones de ajuste rápido de tiempo */}
