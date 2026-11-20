@@ -57,7 +57,9 @@ export function FocusModeScreen({ theme, appearance, timeDisplay, progress, colo
   const panelBg = dark ? '#151519' : '#ffffff';
 
   const compact = compactTime(timeDisplay);
-  const groups = compact.split(':');
+  // Cada grupo con dos cifras: con horas, "01:05:23", para que las tarjetas
+  // del tema Números queden simétricas.
+  const groups = compact.split(':').map((g) => g.padStart(2, '0'));
 
   return (
     <motion.div
@@ -115,7 +117,7 @@ export function FocusModeScreen({ theme, appearance, timeDisplay, progress, colo
                   style={{
                     background: panelBg,
                     color: ink,
-                    fontSize: groups.length > 2 ? 'clamp(64px, 22vw, 112px)' : 'clamp(92px, 36vw, 156px)',
+                    fontSize: groups.length > 2 ? 'clamp(96px, 34vw, 148px)' : 'clamp(92px, 36vw, 156px)',
                     boxShadow: dark ? '0 10px 30px rgba(0,0,0,0.55)' : '0 10px 26px rgba(28,28,35,0.08)',
                   }}
                 >

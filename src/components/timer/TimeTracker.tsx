@@ -92,12 +92,16 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
   const handleTaskAfterSession = (taskId: string | undefined, complete: boolean, avanceTaskId?: string) => {
     if (taskId) {
       const task = tasks.find((t) => t.id === taskId);
-      if (task?.isActivityOnly) {
+      // En una sesión de avance la tarea original se conserva para que acumule
+      // el tiempo registrado (solo se completa el avance).
+      if (task?.isActivityOnly && !avanceTaskId) {
         tasksColl.remove(taskId);
         return;
       }
       if (task && tracker.draft.activityId) tasksColl.update(taskId, { activityId: tracker.draft.activityId });
-      if (task && complete) tasksColl.update(taskId, { completed: true, completedAt: new Date().toISOString() });
+      // Si la sesión es de un avance, completar solo marca el avance: la tarea
+      // original únicamente suma el tiempo registrado.
+      if (task && complete && !avanceTaskId) tasksColl.update(taskId, { completed: true, completedAt: new Date().toISOString() });
     }
     if (complete && avanceTaskId) {
       tasksColl.update(avanceTaskId, { completed: true, completedAt: new Date().toISOString() });

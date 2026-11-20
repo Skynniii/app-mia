@@ -39,7 +39,7 @@ interface Props {
   onDragPointerEnd?: () => void;
   activityColor?: string;
   activityName?: string;
-  /** Tareas-actividad: lanza el Timer con esa actividad. */
+  /** Tareas-actividad y avances: lanza el Timer (o lo reanuda) con esa fila. */
   onStartActivity?: (task: Task) => void;
 }
 
@@ -90,9 +90,12 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
   const { user } = useAuth();
   const cap = useDeviceCapability();
   const tracker = useRunningTracker();
+  const isAdvance = !!task.linkedTaskId;
+  // Un avance se registra sobre su tarea original: el draft guarda el id del
+  // original en `taskId` y el del avance en `avanceTaskId`.
   const isTimerActive = !!tracker.running
     && tracker.running.startedAt !== null
-    && tracker.draft.taskId === task.id;
+    && (tracker.draft.taskId === task.id || (isAdvance && tracker.draft.avanceTaskId === task.id));
   // Tiempo que lleva registrándose la tarea en el Timer (se refresca por segundo).
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -135,7 +138,7 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
   const inPrincipal = !!listTag || !!compact;
   const showListTag = !!listTag && !hideListTag;
   const isActivityOnly = !!task.isActivityOnly;
-  const isLinked = !!task.linkedTaskId;
+  const isLinked = isAdvance;
   const showDeadline = !isActivityOnly && !isLinked && typeof task.dueDate === 'string' && !!task.dueDate && sortMode !== 'deadline' && !inPrincipal;
   const showDue = !isActivityOnly && !isLinked && typeof task.scheduledDate === 'string' && !!task.scheduledDate && sortMode !== 'date' && !hideDueDate;
   const showNotes = !isActivityOnly && !isLinked && hasNotes && !inPrincipal;
@@ -225,6 +228,28 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
     }, 450);
   };
 
+  // Avance en curso: el check guarda el registro y completa SOLO el avance.
+  // El tiempo se suma a la tarea original (saveRunningSession incrementa el
+  // taskId del draft, que es el de la tarea original).
+  const handleCompleteAdvanceTimer = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isChecked) return;
+    const { running, draft } = tracker;
+    hapticHeavy();
+    setOptimistic(true);
+    setSparkle(true);
+    if (settings.sounds) playCompleteSound();
+    if (running && user?.uid) {
+      tracker.setRunning(null);
+      tracker.setDraft((d) => ({ ...d, taskId: undefined, avanceTaskId: undefined }));
+      void saveRunningSession(user.uid, running, draft);
+    }
+    setTimeout(() => {
+      setSparkle(false);
+      onToggle(task.id);
+    }, 450);
+  };
+
   const inner = (
     <>
       {completingImportant && rectSize && (() => {
@@ -242,11 +267,11 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
       })()}
 
       <div className="flex items-center w-full min-h-[24px]">
-      {isActivityOnly ? (
+      {isActivityOnly || isAdvance ? (
         <motion.button
           type="button"
           onClick={showActivityCheck ? openTimer : (e) => { e.stopPropagation(); onStartActivity?.(task); }}
-          title={showActivityCheck ? 'Ir a Focus' : 'Empezar en el Timer'}
+          title={showActivityCheck ? 'Ir a Focus' : isAdvance ? 'Reanudar en el Timer' : 'Empezar en el Timer'}
           className="relative flex items-center justify-center w-[20px] h-[20px] flex-none mr-3 bg-transparent border-none p-0 cursor-pointer"
           animate={{ opacity: completingImportant ? 0 : 1, scale: completingImportant ? 0.6 : 1 }}
           transition={{ duration: 0.45, ease: 'easeInOut' }}
@@ -307,13 +332,13 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
         )}
       </div>
 
-      {isActivityOnly && isTimerActive ? (
-        // Tarea-actividad en curso: a la derecha, el tiempo registrado y el
-        // check que guarda el registro y completa la actividad.
+      {(isActivityOnly || isAdvance) && isTimerActive ? (
+        // Fila en curso: a la derecha, el tiempo registrado y el check que
+        // guarda el registro (en un avance completa solo el avance).
         <button
           type="button"
-          onClick={handleCompleteActivityTimer}
-          title="Guardar registro y completar"
+          onClick={isAdvance ? handleCompleteAdvanceTimer : handleCompleteActivityTimer}
+          title={isAdvance ? 'Guardar registro y completar avance' : 'Guardar registro y completar'}
           className="flex-none ml-1 flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-full border-none cursor-pointer active:scale-95 transition-transform"
           style={{ background: `${playColor}18` }}
         >
