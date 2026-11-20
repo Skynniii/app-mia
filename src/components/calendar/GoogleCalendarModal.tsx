@@ -63,7 +63,7 @@ export function GoogleCalendarModal({ onClose }: Props) {
         <div className="flex items-center gap-3 px-4">
           <BackButton onClick={onClose} />
           <div className="min-w-0">
-            <h1 className="text-[#2b2b2b] font-bold text-2xl m-0">Google Calendar</h1>
+            <h1 className="text-[#1c1c23] font-bold text-[22px] leading-tight tracking-[-0.03em] m-0">Google Calendar</h1>
             <p className="text-[13px] text-[#999] m-0 mt-0.5">Eventos, cumpleaños y festivos</p>
           </div>
         </div>

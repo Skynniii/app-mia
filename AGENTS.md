@@ -39,6 +39,26 @@ secrets. There are no `import.meta.env.*` reads anywhere in `src/`.
   las listas de Tasks), tarjetas `rounded-[16px]`, padding interno `p-4` y filas
   `px-4`. Para nuevas tarjetas de esas secciones, usa esas mismas clases.
 
+## Tipografía y jerarquía
+
+- La fuente es **Inter** (variable, cargada en `index.html` desde Google Fonts) con
+  la pila del sistema como respaldo en `src/index.css`. El `body` lleva
+  `letter-spacing: -0.011em`: no añadas tracking positivo al texto normal.
+- Escala de referencia (mantén estos valores para que las secciones se vean igual):
+  - Título de sección: `text-[25px] font-bold tracking-[-0.03em]` en `TopBar`
+    (alineado a la izquierda, junto al botón de menú). No lo cambies por sección.
+  - Títulos de pantalla completa y de lista: 22px y 19px, `font-bold`,
+    `tracking-[-0.03em]` / `tracking-[-0.025em]`.
+  - Etiquetas de sección ("Hoy", "Historial", "Actividades"…): clase `.eyebrow`
+    de `src/index.css` (11px, 600, mayúsculas, `0.09em`). No repitas clases
+    `text-[12px] font-bold uppercase tracking-wider` a mano.
+  - Texto principal de filas y tarjetas: 15px `font-medium`
+    `tracking-[-0.01em]`; texto secundario 13px; metadatos 12px.
+  - Números destacados (tiempo total, día del calendario): 32px `font-bold`
+    `tabular-nums tracking-[-0.04em]`.
+- Colores de tinta: principal `#1c1c23`, cuerpo `#333`, secundario `#777`,
+  apagado `#8b8b98`/`#a0a0a0`.
+
 ## Barra de estado en Android (Capacitor)
 
 - `android/app/src/main/java/com/lumina/app/MainActivity.java` activa edge-to-edge

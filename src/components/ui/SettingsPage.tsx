@@ -76,7 +76,7 @@ function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }
   return (
     <div className="flex items-center gap-2 mb-3 mt-6">
       <span className="text-[#888]">{icon}</span>
-      <h3 className="text-[12px] font-bold text-[#555] uppercase tracking-wider whitespace-nowrap">{title}</h3>
+      <h3 className="eyebrow whitespace-nowrap">{title}</h3>
       <div className="flex-1 h-[1px] bg-[#e8e8e8] ml-1" />
     </div>
   );
@@ -101,7 +101,7 @@ export function SettingsPage({ onBack }: Props) {
         <div className="flex items-center gap-3 px-4">
           <BackButton onClick={onBack} />
           <div>
-            <h1 className="text-[#2b2b2b] font-bold text-2xl m-0">Configuración</h1>
+            <h1 className="text-[#1c1c23] font-bold text-[22px] leading-tight tracking-[-0.03em] m-0">Configuración</h1>
             <p className="text-[13px] text-[#999] m-0 mt-0.5">Personaliza tu experiencia</p>
           </div>
         </div>

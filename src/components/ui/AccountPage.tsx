@@ -54,7 +54,7 @@ export function AccountPage({ onBack, onOpenSettings }: Props) {
         <div className="flex items-center gap-3 px-4">
           <BackButton onClick={onBack} />
           <div>
-            <h1 className="text-[#2b2b2b] font-bold text-2xl m-0">Mi cuenta</h1>
+            <h1 className="text-[#1c1c23] font-bold text-[22px] leading-tight tracking-[-0.03em] m-0">Mi cuenta</h1>
             <p className="text-[13px] text-[#999] m-0 mt-0.5">Gestiona tu perfil y preferencias</p>
           </div>
         </div>
@@ -64,7 +64,7 @@ export function AccountPage({ onBack, onOpenSettings }: Props) {
         {/* Perfil */}
         <div className="flex flex-col items-center mt-4 mb-6">
           <ProfileAvatar photoURL={photoURL} name={name} size={96} />
-          <p className="text-[18px] font-bold text-[#2b2b2b] mt-3 m-0 capitalize">{name}</p>
+          <p className="text-[19px] font-semibold text-[#1c1c23] tracking-[-0.02em] mt-3 m-0 capitalize">{name}</p>
           {email && <p className="text-[14px] text-[#999] mt-0.5 m-0">{email}</p>}
         </div>
 

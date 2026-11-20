@@ -94,10 +94,10 @@ export function TodaySummary({ entries, activities, liveElapsed, isRunning, live
     <div className="flex flex-col gap-2">
       <div className="bg-white p-4 rounded-[16px] shadow-[6px_6px_12px_#e6e6e6,-6px_-6px_12px_#ffffff] flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <p className="text-[13px] font-semibold text-[#999] uppercase tracking-wide m-0">Hoy</p>
+          <p className="eyebrow m-0">Hoy</p>
           <div className="flex items-center gap-2">
             {isRunning && <span className="w-2 h-2 rounded-full bg-[#34c77b] animate-pulse" />}
-            <span className="text-[36px] font-bold text-[#333] tabular-nums leading-none">{formatElapsed(total)}</span>
+            <span className="text-[32px] font-bold text-[#1c1c23] tabular-nums leading-none tracking-[-0.04em]">{formatElapsed(total)}</span>
           </div>
         </div>
 

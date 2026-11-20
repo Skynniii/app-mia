@@ -202,7 +202,7 @@ export function TimeTracker({ onMenuClick, onOpenAccount }: Props) {
 
             <div className="flex items-center gap-3 pt-2">
               <div className="flex-1 h-px bg-[#eceaf3]" />
-              <span className="text-[12px] font-bold uppercase tracking-wider text-[#a0a0a0]">Historial</span>
+              <span className="eyebrow">Historial</span>
               <div className="flex-1 h-px bg-[#eceaf3]" />
             </div>
 

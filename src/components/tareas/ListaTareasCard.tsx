@@ -381,7 +381,7 @@ export function ListaTareasCard({
               ) : (
                 <SortMenu value={sortMode} onChange={(m) => { onUpdateList(list.id, { sortMode: m }); setReorderMode(m === 'custom'); }} />
               )}
-              <h3 className="flex-1 text-center leading-none m-0 p-0 text-[18px] text-[#2b2b2b] font-bold tracking-tight">{list.name}</h3>
+              <h3 className="flex-1 text-center leading-none m-0 p-0 text-[19px] text-[#1c1c23] font-bold tracking-[-0.025em]">{list.name}</h3>
               <DesplegableMenu isProtected={isProtected} onRename={() => onRename(list.id, list.name)} onDelete={() => onDelete(list.id)} onDeleteCompleted={() => onDeleteCompleted(list.id)} onAddSeparator={() => onAddSeparator(list.id)} onDeleteSeparators={() => onDeleteSeparators(list.id)} />
             </div>
             <hr className={`m-0 mx-1 flex-none ${listActivity ? 'border-t-2' : 'border-t border-[#f0f0f5]'}`} style={listActivity ? { borderTopColor: listActivity.color } : undefined} />

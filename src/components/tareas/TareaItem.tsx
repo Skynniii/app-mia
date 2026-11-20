@@ -296,7 +296,7 @@ export const TareaItem = memo(forwardRef<HTMLLIElement, Props>(({ task, onToggle
         <motion.span
           animate={{ opacity: completingImportant ? 0 : 1 }}
           transition={{ duration: 0.45, ease: 'easeInOut' }}
-          className={`text-[15px] leading-snug ${isCompleted ? 'text-[#a0a0a0] line-through' : 'text-[#333333]'} ${task.isActivityOnly ? 'font-semibold' : ''}`}
+          className={`text-[15px] leading-snug tracking-[-0.01em] ${isCompleted ? 'text-[#a0a0a0] line-through' : 'text-[#333333]'} ${task.isActivityOnly ? 'font-semibold' : 'font-medium'}`}
         >
           {task.isActivityOnly ? (
             <span style={{ color: isCompleted ? undefined : (activityColor ?? '#7f70ff') }}>

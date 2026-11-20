@@ -64,7 +64,7 @@ export function DayHeadline({ date, items, completedItems = [], overdueItems = [
     <div className="flex flex-col gap-2.5 pt-3 pb-3">
       {/* Fila 1: número del día + día de la semana */}
       <div className="flex items-center gap-2.5 min-w-0 px-3">
-        <span className="text-[34px] font-bold text-[#333] leading-none tabular-nums">
+        <span className="text-[32px] font-bold text-[#1c1c23] leading-none tabular-nums tracking-[-0.04em]">
           {dt.getDate()}
         </span>
         <span className="text-[17px] font-semibold text-[#7f70ff] capitalize leading-none pb-[3px]">
